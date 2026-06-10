@@ -92,7 +92,8 @@ fun JarvisDashboard(
     onOpenNotificationSettings: () -> Unit,
     onOpenOverlaySettings: () -> Unit
 ) {
-    var isJarvisActive by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var isJarvisActive by remember { mutableStateOf(com.example.util.JarvisPreferences.isJarvisActive(context)) }
 
     Column(
         modifier = modifier.fillMaxSize()
@@ -110,7 +111,16 @@ fun JarvisDashboard(
             
             // Activation Button
             Button(
-                onClick = { isJarvisActive = !isJarvisActive },
+                onClick = { 
+                    isJarvisActive = !isJarvisActive 
+                    com.example.util.JarvisPreferences.setJarvisActive(context, isJarvisActive)
+                    val serviceIntent = Intent(context, com.example.services.JarvisVoiceService::class.java)
+                    if (isJarvisActive) {
+                        context.startForegroundService(serviceIntent)
+                    } else {
+                        context.stopService(serviceIntent)
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)

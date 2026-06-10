@@ -41,4 +41,12 @@ object JarvisPreferences {
     fun getBoolean(context: Context, key: String, default: Boolean): Boolean {
         return getPrefs(context).getBoolean(key, default)
     }
+
+    fun setJarvisActive(context: Context, active: Boolean) {
+        saveBoolean(context, "jarvis_active", active)
+    }
+
+    fun isJarvisActive(context: Context): Boolean {
+        return getBoolean(context, "jarvis_active", false)
+    }
 }
