@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Jarvis</string>
+    <string name="accessibility_service_description">Jarvis Accessibility Service for screen scraping and app blocking.</string>
+</resources>
