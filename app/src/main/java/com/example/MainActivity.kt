@@ -1,6 +1,8 @@
 package com.example
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -11,6 +13,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -134,15 +139,16 @@ fun JarvisDashboard(
 
 @Composable
 fun JarvisSettings(modifier: Modifier = Modifier) {
-    var startTime by remember { mutableStateOf("09:00") }
-    var endTime by remember { mutableStateOf("17:00") }
-    var apiKey by remember { mutableStateOf("sk-or-v1-...") }
-    var model by remember { mutableStateOf("google/gemini-2.0-flash-exp:free") }
-    var prompt by remember { mutableStateOf("ROLE: Autonomous Android Agent named 'Jarvis'.\nTONE: Ruthless, high-discipline...") }
-    var voiceWakeEnabled by remember { mutableStateOf(true) }
-    var notificationReadEnabled by remember { mutableStateOf(true) }
-    var voiceToVoiceEnabled by remember { mutableStateOf(true) }
-    var overlayEnabled by remember { mutableStateOf(true) }
+    val context = LocalContext.current
+    var startTime by remember { mutableStateOf(com.example.util.JarvisPreferences.getString(context, "start_time", "09:00")) }
+    var endTime by remember { mutableStateOf(com.example.util.JarvisPreferences.getString(context, "end_time", "17:00")) }
+    var apiKey by remember { mutableStateOf(com.example.util.JarvisPreferences.getString(context, "api_key", "sk-or-v1-...")) }
+    var model by remember { mutableStateOf(com.example.util.JarvisPreferences.getString(context, "model", "google/gemini-2.0-flash-exp:free")) }
+    var prompt by remember { mutableStateOf(com.example.util.JarvisPreferences.getString(context, "prompt", "ROLE: Autonomous Android Agent named 'Jarvis'.\nTONE: Ruthless, high-discipline...")) }
+    var voiceWakeEnabled by remember { mutableStateOf(com.example.util.JarvisPreferences.getBoolean(context, "voice_wake_enabled", true)) }
+    var notificationReadEnabled by remember { mutableStateOf(com.example.util.JarvisPreferences.getBoolean(context, "notification_read_enabled", true)) }
+    var voiceToVoiceEnabled by remember { mutableStateOf(com.example.util.JarvisPreferences.getBoolean(context, "voice_to_voice_enabled", true)) }
+    var overlayEnabled by remember { mutableStateOf(com.example.util.JarvisPreferences.getBoolean(context, "overlay_enabled", true)) }
 
     Column(
         modifier = modifier
@@ -162,7 +168,10 @@ fun JarvisSettings(modifier: Modifier = Modifier) {
             Spacer(modifier = Modifier.height(16.dp))
             OutlinedTextField(
                 value = apiKey,
-                onValueChange = { apiKey = it },
+                onValueChange = { 
+                    apiKey = it 
+                    com.example.util.JarvisPreferences.saveString(context, "api_key", it)
+                },
                 label = { Text("API Key", color = JarvisTextMuted) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = JarvisCyan, unfocusedBorderColor = JarvisCardBorder, focusedTextColor = Color.White, unfocusedTextColor = Color.White),
@@ -171,7 +180,10 @@ fun JarvisSettings(modifier: Modifier = Modifier) {
             Spacer(modifier = Modifier.height(12.dp))
             OutlinedTextField(
                 value = model,
-                onValueChange = { model = it },
+                onValueChange = { 
+                    model = it 
+                    com.example.util.JarvisPreferences.saveString(context, "model", it)
+                },
                 label = { Text("Model", color = JarvisTextMuted) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = JarvisCyan, unfocusedBorderColor = JarvisCardBorder, focusedTextColor = Color.White, unfocusedTextColor = Color.White),
@@ -185,7 +197,10 @@ fun JarvisSettings(modifier: Modifier = Modifier) {
             Spacer(modifier = Modifier.height(16.dp))
             OutlinedTextField(
                 value = prompt,
-                onValueChange = { prompt = it },
+                onValueChange = { 
+                    prompt = it 
+                    com.example.util.JarvisPreferences.saveString(context, "prompt", it)
+                },
                 modifier = Modifier.fillMaxWidth().height(140.dp),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = JarvisCyan, unfocusedBorderColor = JarvisCardBorder, focusedTextColor = Color.White, unfocusedTextColor = Color.White)
             )
@@ -194,8 +209,11 @@ fun JarvisSettings(modifier: Modifier = Modifier) {
                 Button(onClick = { /* Upgrade logic */ }, modifier = Modifier.weight(1f).height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = JarvisCyan, contentColor = Color.Black), shape = RoundedCornerShape(8.dp)) {
                     Text("UPGRADE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
-                Button(onClick = { prompt = "" }, modifier = Modifier.weight(1f).height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.2f), contentColor = Color.Red), shape = RoundedCornerShape(8.dp)) {
-                    Text("DELETE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Button(onClick = { 
+                    prompt = "ROLE: Autonomous Android Agent named 'Jarvis'.\nTONE: Ruthless, high-discipline..."
+                    com.example.util.JarvisPreferences.saveString(context, "prompt", prompt)
+                }, modifier = Modifier.weight(1f).height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.2f), contentColor = Color.Red), shape = RoundedCornerShape(8.dp)) {
+                    Text("RESET", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
         }
@@ -204,10 +222,25 @@ fun JarvisSettings(modifier: Modifier = Modifier) {
         Column(modifier = Modifier.fillMaxWidth().background(JarvisCardBg, RoundedCornerShape(16.dp)).border(1.dp, JarvisCardBorder, RoundedCornerShape(16.dp)).padding(16.dp)) {
             Text("AUTOMATION & VOICE", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = JarvisTextMuted, letterSpacing = 2.sp)
             Spacer(modifier = Modifier.height(16.dp))
-            SwitchSettingItem("Display Over Other Apps", "Enforce lock screen & tasks globally", overlayEnabled) { overlayEnabled = it }
-            SwitchSettingItem("Voice Wake-Word (\"Jarvis\")", "Replies: 'Assalamualaikum Kashif Bhai...'", voiceWakeEnabled) { voiceWakeEnabled = it }
-            SwitchSettingItem("Voice-to-Voice Comms", "Continuous vocal interaction mode", voiceToVoiceEnabled) { voiceToVoiceEnabled = it }
-            SwitchSettingItem("Notification Announcer", "Reads incoming notifications aloud", notificationReadEnabled) { notificationReadEnabled = it }
+            SwitchSettingItem("Display Over Other Apps", "Enforce lock screen & tasks globally", overlayEnabled) { 
+                overlayEnabled = it 
+                com.example.util.JarvisPreferences.saveBoolean(context, "overlay_enabled", it)
+            }
+            SwitchSettingItem("Voice Wake-Word (\"Jarvis\")", "Replies: 'Assalamualaikum Kashif Bhai...'", voiceWakeEnabled) { 
+                voiceWakeEnabled = it 
+                com.example.util.JarvisPreferences.saveBoolean(context, "voice_wake_enabled", it)
+                if (it) {
+                    context.startService(Intent(context, com.example.services.JarvisVoiceService::class.java))
+                }
+            }
+            SwitchSettingItem("Voice-to-Voice Comms", "Continuous vocal interaction mode", voiceToVoiceEnabled) { 
+                voiceToVoiceEnabled = it 
+                com.example.util.JarvisPreferences.saveBoolean(context, "voice_to_voice_enabled", it)
+            }
+            SwitchSettingItem("Notification Announcer", "Reads incoming notifications aloud", notificationReadEnabled) { 
+                notificationReadEnabled = it 
+                com.example.util.JarvisPreferences.saveBoolean(context, "notification_read_enabled", it)
+            }
         }
 
         // Time Configuration
@@ -217,7 +250,10 @@ fun JarvisSettings(modifier: Modifier = Modifier) {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 OutlinedTextField(
                     value = startTime,
-                    onValueChange = { startTime = it },
+                    onValueChange = { 
+                        startTime = it 
+                        com.example.util.JarvisPreferences.saveString(context, "start_time", it)
+                    },
                     label = { Text("Start Time") },
                     modifier = Modifier.weight(1f),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = JarvisCyan, unfocusedBorderColor = JarvisCardBorder, focusedTextColor = Color.White, unfocusedTextColor = Color.White),
@@ -225,7 +261,10 @@ fun JarvisSettings(modifier: Modifier = Modifier) {
                 )
                 OutlinedTextField(
                     value = endTime,
-                    onValueChange = { endTime = it },
+                    onValueChange = { 
+                        endTime = it 
+                        com.example.util.JarvisPreferences.saveString(context, "end_time", it)
+                    },
                     label = { Text("End Time") },
                     modifier = Modifier.weight(1f),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = JarvisCyan, unfocusedBorderColor = JarvisCardBorder, focusedTextColor = Color.White, unfocusedTextColor = Color.White),
@@ -239,10 +278,28 @@ fun JarvisSettings(modifier: Modifier = Modifier) {
             Text("ALLOWED APPLICATIONS", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = JarvisTextMuted, letterSpacing = 2.sp)
             Spacer(modifier = Modifier.height(16.dp))
             
-            AllowedAppItem("Chrome", Icons.Default.Search, true)
-            AllowedAppItem("Notion", Icons.Default.Edit, true)
-            AllowedAppItem("Android Studio", Icons.Default.Build, true)
-            AllowedAppItem("WhatsApp", Icons.Default.Send, false)
+            var appsList by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+            
+            LaunchedEffect(Unit) {
+                val pm = context.packageManager
+                val intent = Intent(Intent.ACTION_MAIN, null).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
+                val resolvedInfos = pm.queryIntentActivities(intent, 0)
+                appsList = resolvedInfos.map {
+                    val appName = it.loadLabel(pm).toString()
+                    val packageName = it.activityInfo.packageName
+                    appName to packageName
+                }.distinctBy { it.second }.sortedBy { it.first }
+            }
+            
+            Column(modifier = Modifier.height(300.dp).verticalScroll(rememberScrollState())) {
+                if (appsList.isEmpty()) {
+                    Text("Loading Apps...", color = JarvisTextMuted)
+                } else {
+                    appsList.forEach { (appName, pkgName) ->
+                        AllowedAppItem(appName, Icons.Default.Info, pkgName)
+                    }
+                }
+            }
         }
         
         Spacer(modifier = Modifier.height(24.dp))
@@ -250,13 +307,17 @@ fun JarvisSettings(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun AllowedAppItem(name: String, icon: androidx.compose.ui.graphics.vector.ImageVector, initiallyChecked: Boolean) {
-    var checked by remember { mutableStateOf(initiallyChecked) }
+fun AllowedAppItem(name: String, icon: androidx.compose.ui.graphics.vector.ImageVector, packageName: String) {
+    val context = LocalContext.current
+    var checked by remember { mutableStateOf(com.example.util.JarvisPreferences.getAllowedApps(context).contains(packageName)) }
     
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { checked = !checked }
+            .clickable { 
+                checked = !checked 
+                com.example.util.JarvisPreferences.setAppAllowed(context, packageName, checked)
+            }
             .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
@@ -268,7 +329,10 @@ fun AllowedAppItem(name: String, icon: androidx.compose.ui.graphics.vector.Image
         }
         Switch(
             checked = checked,
-            onCheckedChange = { checked = it },
+            onCheckedChange = { 
+                checked = it 
+                com.example.util.JarvisPreferences.setAppAllowed(context, packageName, it)
+            },
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = JarvisCyan,

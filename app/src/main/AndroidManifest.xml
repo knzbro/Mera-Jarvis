@@ -68,6 +68,12 @@
             </intent-filter>
         </service>
 
+        <!-- System Overlay Service -->
+        <service android:name=".services.JarvisOverlayService" android:exported="false" />
+
+        <!-- Voice Authentication Service -->
+        <service android:name=".services.JarvisVoiceService" android:exported="false" />
+
     </application>
 
 </manifest>

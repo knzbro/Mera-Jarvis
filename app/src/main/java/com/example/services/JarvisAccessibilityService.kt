@@ -22,16 +22,16 @@ class JarvisAccessibilityService : AccessibilityService() {
             Log.d(TAG, "Window State Changed: $packageName")
             
             // If active app is NOT in ['Chrome', 'Google Maps', 'Supabase', 'KNZ Worker\'s'] during work hours
-            val allowedApps = listOf(
-                "com.android.chrome", 
-                "com.google.android.apps.maps", 
-                "io.supabase.app", 
-                "com.knz.worker"
-            )
+            val allowedApps = com.example.util.JarvisPreferences.getAllowedApps(this)
             
-            if (!allowedApps.contains(packageName)) {
-                // Here we would deploy the System Overlay Window
-                Log.d(TAG, "Unproductive app detected ($packageName). Overlay should be deployed here.")
+            // Ignore system UI and launcher to prevent lockouts
+            if (packageName != "com.android.systemui" && packageName != "com.google.android.apps.nexuslauncher" && packageName != applicationContext.packageName) {
+                if (!allowedApps.contains(packageName) && com.example.util.JarvisPreferences.getBoolean(this, "overlay_enabled", true)) {
+                    // Here we would deploy the System Overlay Window
+                    Log.d(TAG, "Unproductive app detected ($packageName). Overlay should be deployed here.")
+                    val intent = Intent(this, JarvisOverlayService::class.java)
+                    startService(intent)
+                }
             }
         }
     }
