@@ -28,6 +28,11 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
 import com.example.ui.theme.MyApplicationTheme
 
 val JarvisBackground = Color(0xFF050505)
@@ -43,12 +48,32 @@ class MainActivity : ComponentActivity() {
         setContent {
             MyApplicationTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    JarvisDashboard(
-                        modifier = Modifier.padding(innerPadding),
-                        onOpenAccessibilitySettings = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
-                        onOpenNotificationSettings = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
-                        onOpenOverlaySettings = { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)) }
-                    )
+                    val navController = rememberNavController()
+                    
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                            .background(JarvisBackground)
+                    ) {
+                        NavHost(
+                            navController = navController,
+                            startDestination = "dashboard",
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            composable("dashboard") {
+                                JarvisDashboard(
+                                    onOpenAccessibilitySettings = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
+                                    onOpenNotificationSettings = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
+                                    onOpenOverlaySettings = { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)) }
+                                )
+                            }
+                            composable("settings") {
+                                JarvisSettings()
+                            }
+                        }
+                        BottomNavBar(navController = navController)
+                    }
                 }
             }
         }
@@ -62,12 +87,12 @@ fun JarvisDashboard(
     onOpenNotificationSettings: () -> Unit,
     onOpenOverlaySettings: () -> Unit
 ) {
+    var isJarvisActive by remember { mutableStateOf(false) }
+
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(JarvisBackground)
+        modifier = modifier.fillMaxSize()
     ) {
-        JarvisHeader()
+        JarvisHeader(isJarvisActive)
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -76,18 +101,210 @@ fun JarvisDashboard(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             Spacer(modifier = Modifier.height(8.dp))
-            CoreLoadIndicator()
+            CoreLoadIndicator(isJarvisActive)
+            
+            // Activation Button
+            Button(
+                onClick = { isJarvisActive = !isJarvisActive },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .border(1.dp, if (isJarvisActive) Color.Red else JarvisCyan, RoundedCornerShape(12.dp)),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isJarvisActive) Color(0x20FF0000) else JarvisCyan.copy(alpha = 0.1f),
+                    contentColor = if (isJarvisActive) Color.Red else JarvisCyan
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    if (isJarvisActive) "DEACTIVATE JARVIS" else "ACTIVATE JARVIS",
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp
+                )
+            }
+
             SystemLogsCard()
             ActiveMandateCard()
             PermissionsSection(onOpenAccessibilitySettings, onOpenNotificationSettings, onOpenOverlaySettings)
             Spacer(modifier = Modifier.height(24.dp))
         }
-        BottomNavBar()
     }
 }
 
 @Composable
-fun JarvisHeader() {
+fun JarvisSettings(modifier: Modifier = Modifier) {
+    var startTime by remember { mutableStateOf("09:00") }
+    var endTime by remember { mutableStateOf("17:00") }
+    var apiKey by remember { mutableStateOf("sk-or-v1-...") }
+    var model by remember { mutableStateOf("google/gemini-2.0-flash-exp:free") }
+    var prompt by remember { mutableStateOf("ROLE: Autonomous Android Agent named 'Jarvis'.\nTONE: Ruthless, high-discipline...") }
+    var voiceWakeEnabled by remember { mutableStateOf(true) }
+    var notificationReadEnabled by remember { mutableStateOf(true) }
+    var voiceToVoiceEnabled by remember { mutableStateOf(true) }
+    var overlayEnabled by remember { mutableStateOf(true) }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp)
+    ) {
+        Spacer(modifier = Modifier.height(24.dp))
+        Text("SYSTEM CONFIGURATION", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = JarvisCyan)
+        
+        Text("Configure AI parameters, communication, and work protocols.", color = JarvisTextMuted, fontSize = 14.sp)
+        
+        // AI Configuration
+        Column(modifier = Modifier.fillMaxWidth().background(JarvisCardBg, RoundedCornerShape(16.dp)).border(1.dp, JarvisCardBorder, RoundedCornerShape(16.dp)).padding(16.dp)) {
+            Text("OPENROUTER AI ENGINE", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = JarvisTextMuted, letterSpacing = 2.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedTextField(
+                value = apiKey,
+                onValueChange = { apiKey = it },
+                label = { Text("API Key", color = JarvisTextMuted) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = JarvisCyan, unfocusedBorderColor = JarvisCardBorder, focusedTextColor = Color.White, unfocusedTextColor = Color.White),
+                singleLine = true
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            OutlinedTextField(
+                value = model,
+                onValueChange = { model = it },
+                label = { Text("Model", color = JarvisTextMuted) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = JarvisCyan, unfocusedBorderColor = JarvisCardBorder, focusedTextColor = Color.White, unfocusedTextColor = Color.White),
+                singleLine = true
+            )
+        }
+
+        // System Prompt
+        Column(modifier = Modifier.fillMaxWidth().background(JarvisCardBg, RoundedCornerShape(16.dp)).border(1.dp, JarvisCardBorder, RoundedCornerShape(16.dp)).padding(16.dp)) {
+            Text("JARVIS CORE PROMPT", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = JarvisTextMuted, letterSpacing = 2.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+            OutlinedTextField(
+                value = prompt,
+                onValueChange = { prompt = it },
+                modifier = Modifier.fillMaxWidth().height(140.dp),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = JarvisCyan, unfocusedBorderColor = JarvisCardBorder, focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { /* Upgrade logic */ }, modifier = Modifier.weight(1f).height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = JarvisCyan, contentColor = Color.Black), shape = RoundedCornerShape(8.dp)) {
+                    Text("UPGRADE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+                Button(onClick = { prompt = "" }, modifier = Modifier.weight(1f).height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.2f), contentColor = Color.Red), shape = RoundedCornerShape(8.dp)) {
+                    Text("DELETE", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            }
+        }
+
+        // Voice & Automation
+        Column(modifier = Modifier.fillMaxWidth().background(JarvisCardBg, RoundedCornerShape(16.dp)).border(1.dp, JarvisCardBorder, RoundedCornerShape(16.dp)).padding(16.dp)) {
+            Text("AUTOMATION & VOICE", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = JarvisTextMuted, letterSpacing = 2.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+            SwitchSettingItem("Display Over Other Apps", "Enforce lock screen & tasks globally", overlayEnabled) { overlayEnabled = it }
+            SwitchSettingItem("Voice Wake-Word (\"Jarvis\")", "Replies: 'Assalamualaikum Kashif Bhai...'", voiceWakeEnabled) { voiceWakeEnabled = it }
+            SwitchSettingItem("Voice-to-Voice Comms", "Continuous vocal interaction mode", voiceToVoiceEnabled) { voiceToVoiceEnabled = it }
+            SwitchSettingItem("Notification Announcer", "Reads incoming notifications aloud", notificationReadEnabled) { notificationReadEnabled = it }
+        }
+
+        // Time Configuration
+        Column(modifier = Modifier.fillMaxWidth().background(JarvisCardBg, RoundedCornerShape(16.dp)).border(1.dp, JarvisCardBorder, RoundedCornerShape(16.dp)).padding(16.dp)) {
+            Text("WORK PROTOCOL", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = JarvisTextMuted, letterSpacing = 2.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                OutlinedTextField(
+                    value = startTime,
+                    onValueChange = { startTime = it },
+                    label = { Text("Start Time") },
+                    modifier = Modifier.weight(1f),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = JarvisCyan, unfocusedBorderColor = JarvisCardBorder, focusedTextColor = Color.White, unfocusedTextColor = Color.White),
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = endTime,
+                    onValueChange = { endTime = it },
+                    label = { Text("End Time") },
+                    modifier = Modifier.weight(1f),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = JarvisCyan, unfocusedBorderColor = JarvisCardBorder, focusedTextColor = Color.White, unfocusedTextColor = Color.White),
+                    singleLine = true
+                )
+            }
+        }
+        
+        // Allowed Apps
+        Column(modifier = Modifier.fillMaxWidth().background(JarvisCardBg, RoundedCornerShape(16.dp)).border(1.dp, JarvisCardBorder, RoundedCornerShape(16.dp)).padding(16.dp)) {
+            Text("ALLOWED APPLICATIONS", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = JarvisTextMuted, letterSpacing = 2.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            AllowedAppItem("Chrome", Icons.Default.Search, true)
+            AllowedAppItem("Notion", Icons.Default.Edit, true)
+            AllowedAppItem("Android Studio", Icons.Default.Build, true)
+            AllowedAppItem("WhatsApp", Icons.Default.Send, false)
+        }
+        
+        Spacer(modifier = Modifier.height(24.dp))
+    }
+}
+
+@Composable
+fun AllowedAppItem(name: String, icon: androidx.compose.ui.graphics.vector.ImageVector, initiallyChecked: Boolean) {
+    var checked by remember { mutableStateOf(initiallyChecked) }
+    
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { checked = !checked }
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, contentDescription = null, tint = if (checked) JarvisCyan else JarvisTextMuted, modifier = Modifier.size(24.dp))
+            Spacer(modifier = Modifier.width(16.dp))
+            Text(name, color = if (checked) Color.White else JarvisTextMuted, fontSize = 16.sp)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = { checked = it },
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = JarvisCyan,
+                uncheckedThumbColor = JarvisTextMuted,
+                uncheckedTrackColor = JarvisCardBg
+            )
+        )
+    }
+}
+
+@Composable
+fun SwitchSettingItem(title: String, subTitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, color = Color.White, fontSize = 14.sp)
+            Text(subTitle, color = JarvisTextMuted, fontSize = 10.sp, lineHeight = 12.sp)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = JarvisCyan,
+                uncheckedThumbColor = JarvisTextMuted,
+                uncheckedTrackColor = JarvisCardBg
+            )
+        )
+    }
+}
+
+@Composable
+fun JarvisHeader(isJarvisActive: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -106,22 +323,23 @@ fun JarvisHeader() {
                 animationSpec = infiniteRepeatable(tween(1000, easing = LinearEasing), repeatMode = RepeatMode.Reverse),
                 label = "alpha"
             )
-            Box(modifier = Modifier.size(8.dp).background(JarvisCyan.copy(alpha = pulseAlpha), CircleShape))
+            Box(modifier = Modifier.size(8.dp).background(if (isJarvisActive) Color.Red else JarvisCyan.copy(alpha = pulseAlpha), CircleShape))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("OS_HOOKED", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = JarvisCyan)
+            Text(if (isJarvisActive) "ENFORCING" else "STANDBY", fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = if (isJarvisActive) Color.Red else JarvisCyan)
         }
     }
 }
 
 @Composable
-fun CoreLoadIndicator() {
+fun CoreLoadIndicator(isJarvisActive: Boolean) {
+    val activeColor = if (isJarvisActive) Color.Red else JarvisCyan
     Box(modifier = Modifier.fillMaxWidth().height(140.dp), contentAlignment = Alignment.Center) {
-        Box(modifier = Modifier.size(140.dp).background(Brush.radialGradient(listOf(JarvisCyan.copy(alpha = 0.2f), Color.Transparent)), CircleShape))
-        Box(modifier = Modifier.size(110.dp).border(1.dp, JarvisCyan.copy(alpha = 0.3f), CircleShape).background(JarvisCyan.copy(alpha = 0.05f), CircleShape), contentAlignment = Alignment.Center) {
-            Box(modifier = Modifier.size(86.dp).border(2.dp, JarvisCyan, CircleShape), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.size(140.dp).background(Brush.radialGradient(listOf(activeColor.copy(alpha = 0.2f), Color.Transparent)), CircleShape))
+        Box(modifier = Modifier.size(110.dp).border(1.dp, activeColor.copy(alpha = 0.3f), CircleShape).background(activeColor.copy(alpha = 0.05f), CircleShape), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.size(86.dp).border(2.dp, activeColor, CircleShape), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("88%", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                    Text("CORE LOAD", fontSize = 8.sp, fontFamily = FontFamily.Monospace, color = JarvisCyan.copy(alpha = 0.8f))
+                    Text(if (isJarvisActive) "100%" else "88%", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("CORE LOAD", fontSize = 8.sp, fontFamily = FontFamily.Monospace, color = activeColor.copy(alpha = 0.8f))
                 }
             }
         }
@@ -204,21 +422,41 @@ fun PermissionBox(modifier: Modifier = Modifier, title: String, status: String, 
 }
 
 @Composable
-fun BottomNavBar() {
+fun BottomNavBar(navController: NavController) {
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
     Row(modifier = Modifier.fillMaxWidth().height(80.dp).background(JarvisBackground).border(1.dp, Color(0x0AFFFFFF)).padding(16.dp), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
-        NavIcon(Icons.Default.Home, isActive = true)
-        NavIcon(Icons.Default.Menu, isActive = false)
-        NavIcon(Icons.Default.Lock, isActive = false)
-        NavIcon(Icons.Default.Settings, isActive = false)
+        NavIcon(Icons.Default.Home, isActive = currentRoute == "dashboard", onClick = {
+            navController.navigate("dashboard") {
+                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        })
+        NavIcon(Icons.Default.Settings, isActive = currentRoute == "settings", onClick = {
+            navController.navigate("settings") {
+                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        })
     }
 }
 
 @Composable
-fun NavIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, isActive: Boolean) {
+fun NavIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, isActive: Boolean, onClick: () -> Unit = {}) {
     val color = if (isActive) JarvisCyan else Color.White
     val alpha = if (isActive) 1f else 0.4f
     val bgColor = if (isActive) JarvisCyan.copy(alpha = 0.1f) else Color.Transparent
-    Box(modifier = Modifier.size(40.dp).background(bgColor, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .background(bgColor, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
         Icon(icon, contentDescription = null, tint = color.copy(alpha = alpha), modifier = Modifier.size(24.dp))
     }
 }
+
