@@ -1,13 +1,18 @@
 package com.example
 
+import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,6 +38,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -70,8 +76,14 @@ class MainActivity : ComponentActivity() {
                                 JarvisDashboard(
                                     onOpenAccessibilitySettings = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
                                     onOpenNotificationSettings = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
-                                    onOpenOverlaySettings = { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)) }
+                                    onOpenOverlaySettings = { 
+                                        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                                        startActivity(intent)
+                                    }
                                 )
+                            }
+                            composable("text_jarvis") {
+                                TextJarvisScreen()
                             }
                             composable("settings") {
                                 JarvisSettings()
@@ -95,6 +107,27 @@ fun JarvisDashboard(
     val context = LocalContext.current
     var isJarvisActive by remember { mutableStateOf(com.example.util.JarvisPreferences.isJarvisActive(context)) }
 
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        // Handle post permission logic if needed
+    }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val permissionsToRequest = mutableListOf(Manifest.permission.RECORD_AUDIO)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            val missing = permissionsToRequest.filter {
+                ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (missing.isNotEmpty()) {
+                permissionLauncher.launch(missing.toTypedArray())
+            }
+        }
+    }
+
     Column(
         modifier = modifier.fillMaxSize()
     ) {
@@ -116,7 +149,11 @@ fun JarvisDashboard(
                     com.example.util.JarvisPreferences.setJarvisActive(context, isJarvisActive)
                     val serviceIntent = Intent(context, com.example.services.JarvisVoiceService::class.java)
                     if (isJarvisActive) {
-                        context.startForegroundService(serviceIntent)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            context.startForegroundService(serviceIntent)
+                        } else {
+                            context.startService(serviceIntent)
+                        }
                     } else {
                         context.stopService(serviceIntent)
                     }
@@ -139,10 +176,129 @@ fun JarvisDashboard(
                 )
             }
 
+            // Test Jarvis Button
+            Button(
+                onClick = { 
+                    val intent = Intent(context, com.example.services.JarvisVoiceService::class.java)
+                    intent.putExtra("COMMAND", "Jarvis Flash Light On")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    } else {
+                        context.startService(intent)
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .border(1.dp, JarvisCardBorder, RoundedCornerShape(12.dp)),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = JarvisCardBg,
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    "TEST VOICE COMMAND",
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp,
+                    fontSize = 12.sp
+                )
+            }
+
             SystemLogsCard()
             ActiveMandateCard()
             PermissionsSection(onOpenAccessibilitySettings, onOpenNotificationSettings, onOpenOverlaySettings)
             Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+fun TextJarvisScreen() {
+    val context = LocalContext.current
+    var inputText by remember { mutableStateOf("") }
+    var chatHistory by remember { mutableStateOf(listOf("Jarvis: I am online. How can I help you, Kashif Bhai?")) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text("TEXT TO TEXT JARVIS", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = JarvisCyan)
+            Spacer(modifier = Modifier.height(16.dp))
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(JarvisCardBg, RoundedCornerShape(12.dp))
+                    .border(1.dp, JarvisCardBorder, RoundedCornerShape(12.dp))
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(chatHistory) { msg ->
+                    Text(
+                        text = msg,
+                        color = if (msg.startsWith("You:")) Color.White else JarvisCyan,
+                        fontSize = 14.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = inputText,
+                onValueChange = { inputText = it },
+                modifier = Modifier.weight(1f),
+                placeholder = { Text("Command...", color = JarvisTextMuted) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = JarvisCyan,
+                    unfocusedBorderColor = JarvisCardBorder,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White
+                ),
+                singleLine = true
+            )
+            IconButton(
+                onClick = {
+                    if (inputText.isNotBlank()) {
+                        chatHistory = chatHistory + "You: $inputText"
+                        val lowerCmd = inputText.lowercase()
+                        val response = when {
+                            lowerCmd.contains("flash light on") || lowerCmd.contains("flashlight on") -> "Jarvis: Flashlight on kar di hai."
+                            lowerCmd.contains("flash light off") || lowerCmd.contains("flashlight off") -> "Jarvis: Flashlight off kar di hai."
+                            else -> "Jarvis: Command received. Processing..."
+                        }
+                        chatHistory = chatHistory + response
+                        
+                        // Pass command to service
+                        val intent = Intent(context, com.example.services.JarvisVoiceService::class.java)
+                        intent.putExtra("COMMAND", inputText)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            context.startForegroundService(intent)
+                        } else {
+                            context.startService(intent)
+                        }
+                        
+                        inputText = ""
+                    }
+                },
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(JarvisCyan, RoundedCornerShape(12.dp))
+            ) {
+                Icon(Icons.Default.Send, contentDescription = "Send", tint = Color.Black)
+            }
         }
     }
 }
@@ -503,6 +659,13 @@ fun BottomNavBar(navController: NavController) {
     Row(modifier = Modifier.fillMaxWidth().height(80.dp).background(JarvisBackground).border(1.dp, Color(0x0AFFFFFF)).padding(16.dp), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
         NavIcon(Icons.Default.Home, isActive = currentRoute == "dashboard", onClick = {
             navController.navigate("dashboard") {
+                popUpTo(navController.graph.startDestinationId) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        })
+        NavIcon(Icons.Default.MailOutline, isActive = currentRoute == "text_jarvis", onClick = {
+            navController.navigate("text_jarvis") {
                 popUpTo(navController.graph.startDestinationId) { saveState = true }
                 launchSingleTop = true
                 restoreState = true

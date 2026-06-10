@@ -101,7 +101,12 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Toast.makeText(this, "Jarvis Voice Module Activated", Toast.LENGTH_SHORT).show()
+        val command = intent?.getStringExtra("COMMAND")
+        if (command != null) {
+            handleCommand(command)
+        } else {
+            Toast.makeText(this, "Jarvis Voice Module Activated", Toast.LENGTH_SHORT).show()
+        }
         return START_STICKY
     }
 
