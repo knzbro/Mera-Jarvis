@@ -28,9 +28,13 @@ class JarvisAccessibilityService : AccessibilityService() {
             if (packageName != "com.android.systemui" && packageName != "com.google.android.apps.nexuslauncher" && packageName != applicationContext.packageName) {
                 if (!allowedApps.contains(packageName) && com.example.util.JarvisPreferences.getBoolean(this, "overlay_enabled", true)) {
                     // Here we would deploy the System Overlay Window
-                    Log.d(TAG, "Unproductive app detected ($packageName). Overlay should be deployed here.")
-                    val intent = Intent(this, JarvisOverlayService::class.java)
-                    startService(intent)
+                    if (android.provider.Settings.canDrawOverlays(this)) {
+                        Log.d(TAG, "Unproductive app detected ($packageName). Overlay should be deployed here.")
+                        val intent = Intent(this, JarvisOverlayService::class.java)
+                        startService(intent)
+                    } else {
+                        Log.e(TAG, "Cannot deploy overlay: SYSTEM_ALERT_WINDOW permission not granted")
+                    }
                 }
             }
         }

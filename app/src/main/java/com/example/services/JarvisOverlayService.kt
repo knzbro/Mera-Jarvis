@@ -47,6 +47,8 @@ class JarvisOverlayService : Service() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setBackgroundColor(Color.WHITE)
+            isClickable = true
+            isFocusable = true
         }
 
         val textView = TextView(this).apply {
