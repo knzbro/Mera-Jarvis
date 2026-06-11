@@ -1,6 +1,7 @@
 package com.example.util
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
 
 object JarvisPreferences {
@@ -101,6 +102,59 @@ object JarvisPreferences {
 
     fun isJarvisActive(context: Context): Boolean {
         return getBoolean(context, "jarvis_active", false)
+    }
+
+    // --- PERSISTENT CHAT HISTORY CONFIGURATION ---
+    fun getChatHistory(context: Context): List<String> {
+        val jsonStr = getString(context, "chat_history", "[]")
+        val list = mutableListOf<String>()
+        try {
+            val array = org.json.JSONArray(jsonStr)
+            for (i in 0 until array.length()) {
+                list.add(array.getString(i))
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        if (list.isEmpty()) {
+            list.add("Jarvis: I am online. How can I help you, Kashif Bhai?")
+        }
+        return list
+    }
+
+    fun saveChatHistory(context: Context, history: List<String>) {
+        try {
+            val array = org.json.JSONArray()
+            for (msg in history) {
+                array.put(msg)
+            }
+            saveString(context, "chat_history", array.toString())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun addChatMessage(context: Context, msg: String) {
+        val current = getChatHistory(context).toMutableList()
+        current.add(msg)
+        if (current.size > 200) {
+            current.removeAt(0)
+        }
+        saveChatHistory(context, current)
+        
+        // Notify chat observers
+        val intent = Intent("com.example.JARVIS_CHAT_UPDATED").apply {
+            setPackage(context.packageName)
+        }
+        context.sendBroadcast(intent)
+    }
+
+    fun clearChatHistory(context: Context) {
+        saveChatHistory(context, listOf("Jarvis: Chat history cleared. Ready for your command, Kashif Bhai!"))
+        val intent = Intent("com.example.JARVIS_CHAT_UPDATED").apply {
+            setPackage(context.packageName)
+        }
+        context.sendBroadcast(intent)
     }
 }
 

@@ -1,14 +1,18 @@
 package com.example.services
-
+ 
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.hardware.camera2.CameraManager
+import android.media.AudioManager
+import android.net.Uri
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -27,6 +31,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
+import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -187,7 +192,7 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
         }, delayMs)
     }
 
-    fun handleCommand(command: String) {
+    fun handleCommand(command: String, isFromText: Boolean = false) {
         val originalCmd = command.trim()
         val lowerCmd = originalCmd.lowercase(Locale.getDefault())
         
@@ -195,24 +200,26 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
         val sensitivity = JarvisPreferences.getString(this, "wake_word_sensitivity", "MEDIUM")
         val hasWakeWord = when (sensitivity.uppercase()) {
             "LOW" -> {
-                // Strict: must contain "jarvis" keyword. Ignores "bhai"/"suno" completely to prevent false triggers.
                 lowerCmd.contains("jarvis")
             }
             "MEDIUM" -> {
-                // Balanced: must contain "jarvis", or contain "bhai" only if spoken with additional words
                 lowerCmd.contains("jarvis") || (lowerCmd.contains("bhai") && lowerCmd.split("\\s+".toRegex()).size >= 2)
             }
             else -> {
-                // High (highly responsive): match jarvis, bhai, or suno anywhere
                 lowerCmd.contains("jarvis") || lowerCmd.contains("bhai") || lowerCmd.contains("suno")
             }
         }
         val voiceWakeEnabled = JarvisPreferences.getBoolean(this, "voice_wake_enabled", true)
         
-        // Require wake-word for background speech inputs
-        if (voiceWakeEnabled && !hasWakeWord) {
+        // Require wake-word ONLY for background voice inputs
+        if (!isFromText && voiceWakeEnabled && !hasWakeWord) {
             Log.d(TAG, "Background input ignored (no wake word matched): $command")
             return
+        }
+
+        // Add user chat text to persistent logs if voice-activated
+        if (!isFromText) {
+            com.example.util.JarvisPreferences.addChatMessage(this, "You: $originalCmd")
         }
 
         // --- 1. LOCAL CUSTOM TRAINED COMMANDS INTERCEPTOR ---
@@ -304,6 +311,35 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
                 }
             }
             "open_app" -> openAppByName(actionArg)
+            
+            // NEW 30+ MECHANICAL MACRO ACTIONS
+            "open_custom_folder" -> openCustomFolder()
+            "create_note" -> createNoteOnDisk(actionArg)
+            "set_timer" -> setSystemTimer(actionArg)
+            "get_time" -> speakCurrentTime()
+            "get_date" -> speakCurrentDate()
+            "search_google" -> searchOnGoogle(actionArg)
+            "volume_up" -> adjustVolume(true)
+            "volume_down" -> adjustVolume(false)
+            "mute" -> muteDevice(true)
+            "unmute" -> muteDevice(false)
+            "open_youtube" -> openYouTube(actionArg)
+            "open_google_maps" -> openGoogleMaps(actionArg)
+            "take_screenshot" -> triggerAccessibilityAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT, "Kashif Bhai, screenshot gestures access ke liye accessibility check kijiye.")
+            "open_notifications" -> triggerAccessibilityAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS, "Notifications list open karne me access block hai.")
+            "open_quick_settings" -> triggerAccessibilityAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS, "Quick toggles load nahi kiye ja sake.")
+            "lock_screen" -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    triggerAccessibilityAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN, "Mera dynamic access blocked hai lock parameters me.")
+                } else {
+                    speakOut("Apka level lock protocol support nahi karta.")
+                }
+            }
+            "power_dialog" -> triggerAccessibilityAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_POWER_DIALOG, "Power metrics check kijiye.")
+            "open_browser" -> openBrowserWeb(actionArg)
+            "clear_logs" -> clearJarvisLogs()
+            "toggle_airplane_mode" -> openAirplaneModeSettings()
+            "battery_status" -> speakBatteryStatus()
         }
     }
 
@@ -323,16 +359,31 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
             lower.contains("bluetooth on") -> toggleBluetooth(true)
             lower.contains("bluetooth off") -> toggleBluetooth(false)
             lower.contains("data on") || lower.contains("data off") || lower.contains("internet") -> toggleMobileData()
+            lower.contains("recents") -> showRecents()
+            lower.contains("home") -> goHome()
+            lower.contains("song") || lower.contains("music") || lower.contains("gaana") -> playSongInProLevel()
+            lower.contains("create file") || lower.contains("file banao") -> handleFileCommand("create")
+            
+            // Offline fallbacks for new macros
+            lower.contains("time") || lower.contains("waqt") || lower.contains("kitne baj") -> speakCurrentTime()
+            lower.contains("date") || lower.contains("tareekh") || lower.contains("aaj kya din") -> speakCurrentDate()
+            lower.contains("battery") || lower.contains("charge") -> speakBatteryStatus()
+            lower.startsWith("search ") || lower.contains("google search") || lower.startsWith("google kero ") -> {
+                val q = lower.replace("search ", "").replace("google search", "").replace("google kero ", "").trim()
+                searchOnGoogle(q)
+            }
+            lower.contains("volume up") || lower.contains("awaaz tez") || lower.contains("volume barhao") -> adjustVolume(true)
+            lower.contains("volume down") || lower.contains("awaaz kam") -> adjustVolume(false)
+            lower.contains("screenshot") -> triggerAccessibilityAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT, "Kashif Bhai, screenshot settings require Accessibility active permissions.")
+            lower.contains("mute") || lower.contains("silent") -> muteDevice(true)
+            lower.contains("unmute") -> muteDevice(false)
+            
             lower.startsWith("open ") || lower.contains("kholo ") || lower.contains("chalao ") -> {
                 val app = lower.replace("open ", "").replace("kholo ", "").replace("chalao ", "").trim()
                 openAppByName(app)
             }
-            lower.contains("recents") -> showRecents()
-            lower.contains("home") -> goHome()
-            lower.contains("song") || lower.contains("music") -> playSongInProLevel()
-            lower.contains("create") || lower.contains("file") -> handleFileCommand(lower)
             else -> {
-                speakOut("Kashif Bhai, ye command online process nahi ho saki ya internet disconnected hai.")
+                speakOut("Kashif Bhai, main background check kiya hai. Command interpret nahi ho paayi.")
             }
         }
     }
@@ -502,7 +553,7 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
                 mediaPlayer = android.media.MediaPlayer.create(this, notificationUri).apply {
                     start()
                 }
-                speakOut("Pro Level folder blank hai. Maine system alarm notify play kiya hai.")
+                speakOut("Pro Level folder blank hai. Maine system alarm play kiya hai.")
             } catch (ex: Exception) {
                 speakOut("Playback folder details holds no media files.")
             }
@@ -548,10 +599,212 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
         }
     }
 
+    // --- HELPER IMPLEMENTATION OF NEW ADVANCED MACROS ---
+    private fun openCustomFolder() {
+        val baseDir = getExternalFilesDir(null) ?: filesDir
+        val proLevelFolder = File(baseDir, "Pro Level")
+        if (!proLevelFolder.exists()) proLevelFolder.mkdirs()
+        try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(Uri.fromFile(proLevelFolder), "*/*")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            speakOut("Kashif Bhai, files system folder explorer view launch ho gaya hai.")
+        } catch (e: Exception) {
+            speakOut("Kashif Bhai, " + proLevelFolder.name + " screen visual explore open kiya.")
+        }
+    }
+
+    private fun createNoteOnDisk(content: String) {
+        val baseDir = getExternalFilesDir(null) ?: filesDir
+        val proLevelFolder = File(baseDir, "Pro Level")
+        if (!proLevelFolder.exists()) proLevelFolder.mkdirs()
+        val noteContent = if (content.isBlank()) "Default Memo saved by Kashif Bhai." else content
+        val noteFile = File(proLevelFolder, "note_${System.currentTimeMillis() % 10000}.txt")
+        try {
+            noteFile.writeText(noteContent)
+            speakOut("Kashif Bhai, maine note save kar diya: $noteContent")
+        } catch (e: Exception) {
+            speakOut("Kashif Bhai, storage note memory allocation failure.")
+        }
+    }
+
+    private fun setSystemTimer(secStr: String) {
+        val seconds = secStr.toIntOrNull() ?: 60
+        try {
+            val intent = Intent(android.provider.AlarmClock.ACTION_SET_TIMER).apply {
+                putExtra(android.provider.AlarmClock.EXTRA_LENGTH, seconds)
+                putExtra(android.provider.AlarmClock.EXTRA_MESSAGE, "Jarvis Timer")
+                putExtra(android.provider.AlarmClock.EXTRA_SKIP_UI, false)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            speakOut("Kashif Bhai, $seconds seconds ka timer start kar diya hai.")
+        } catch (e: Exception) {
+            speakOut("Timer system configurations access is not loaded.")
+        }
+    }
+
+    private fun speakCurrentTime() {
+        val sdf = SimpleDateFormat("hh:mm a", Locale.getDefault())
+        val formattedTime = sdf.format(Date())
+        speakOut("Kashif Bhai, abhi ka waqt hai $formattedTime.")
+    }
+
+    private fun speakCurrentDate() {
+        val sdf = SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.getDefault())
+        val formattedDate = sdf.format(Date())
+        speakOut("Kashif Bhai, aaj ki tareekh hai: $formattedDate.")
+    }
+
+    private fun searchOnGoogle(query: String) {
+        val trimmed = if (query.isBlank()) "Jarvis Android AI" else query
+        try {
+            val intent = Intent(Intent.ACTION_WEB_SEARCH).apply {
+                putExtra(android.app.SearchManager.QUERY, trimmed)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            speakOut("Kashif Bhai, main Google par '$trimmed' search kar raha hoon.")
+        } catch (e: Exception) {
+            try {
+                val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=${URLEncoder.encode(trimmed, "UTF-8")}")).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(webIntent)
+                speakOut("Google main page loaded.")
+            } catch (ex: Exception) {
+                speakOut("Search query pipeline block.")
+            }
+        }
+    }
+
+    private fun adjustVolume(increase: Boolean) {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val direction = if (increase) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER
+        try {
+            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, AudioManager.FLAG_SHOW_UI)
+            speakOut("Kashif Bhai, volume sound level " + (if (increase) "raise" else "lower") + " kar diya.")
+        } catch (e: Exception) {
+            speakOut("Volume controller streams are not accessible.")
+        }
+    }
+
+    private fun muteDevice(mute: Boolean) {
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        try {
+            if (mute) {
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, 0, AudioManager.FLAG_SHOW_UI)
+                speakOut("Mute and silent status activated.")
+            } else {
+                val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVol / 2, AudioManager.FLAG_SHOW_UI)
+                speakOut("Sound levels channel unmuted.")
+            }
+        } catch (e: Exception) {
+            speakOut("Sound adjustments restricted.")
+        }
+    }
+
+    private fun openYouTube(query: String) {
+        try {
+            val intent = if (query.isNotBlank()) {
+                Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=${URLEncoder.encode(query, "UTF-8")}"))
+            } else {
+                packageManager.getLaunchIntentForPackage("com.google.android.youtube") ?: Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com"))
+            }
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+            speakOut("Kashif Bhai, YouTube activate ho gaya.")
+        } catch (e: Exception) {
+            speakOut("YouTube web launch failed.")
+        }
+    }
+
+    private fun openGoogleMaps(destination: String) {
+        try {
+            val q = if (destination.isBlank()) "google maps" else destination
+            val uri = Uri.parse("google.navigation:q=${URLEncoder.encode(q, "UTF-8")}")
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                setPackage("com.google.android.apps.maps")
+            }
+            startActivity(intent)
+            speakOut("Kashif Bhai, maps navigation launch kiya.")
+        } catch (e: Exception) {
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://maps.google.com/?q=${URLEncoder.encode(destination, "UTF-8")}")).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(intent)
+                speakOut("Google Maps online loaded.")
+            } catch (ex: Exception) {
+                speakOut("Navigation metrics restricted.")
+            }
+        }
+    }
+
+    private fun triggerAccessibilityAction(actionId: Int, fallbackMsg: String) {
+        val service = JarvisAccessibilityService.instance
+        if (service != null) {
+            service.performGlobalAction(actionId)
+            speakOut("Micro trigger execution success.")
+        } else {
+            speakOut(fallbackMsg)
+        }
+    }
+
+    private fun openBrowserWeb(urlArg: String) {
+        val rawUrl = if (urlArg.isBlank()) "google.com" else urlArg
+        val targetUrl = if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) rawUrl else "https://$rawUrl"
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            speakOut("Kashif Bhai, main cyberdeck browser link launch kar diya hai.")
+        } catch (e: Exception) {
+            speakOut("Web launch system browser is not loaded.")
+        }
+    }
+
+    private fun clearJarvisLogs() {
+        com.example.util.JarvisLogger.clear()
+        speakOut("Kashif Bhai, diagnostic records pipeline empty kardo.")
+    }
+
+    private fun openAirplaneModeSettings() {
+        try {
+            val intent = Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
+            speakOut("Kashif Bhai, airplane mode toggle frame launch kar diya.")
+        } catch (e: Exception) {
+            speakOut("System settings permission block.")
+        }
+    }
+
+    private fun speakBatteryStatus() {
+        try {
+            val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = batteryIntent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            val pct = (level * 100 / scale.toFloat()).toInt()
+            val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+            val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+            val stateMsg = if (isCharging) "charging power supply connected status par hai" else "discharge level par hai"
+            speakOut("Kashif Bhai, phone battery power percentage $pct hai, aur device abhi $stateMsg.")
+        } catch (e: Exception) {
+            speakOut("Power diagnostics check metrics failure.")
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val command = intent?.getStringExtra("COMMAND")
         if (command != null) {
-            handleCommand(command)
+            handleCommand(command, isFromText = true)
         } else {
             Toast.makeText(this, "Jarvis Voice Engine Engaged", Toast.LENGTH_SHORT).show()
         }
@@ -560,6 +813,8 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
 
     private fun speakOut(text: String) {
         tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "")
+        // Log spoken outputs to local persistent chat log
+        com.example.util.JarvisPreferences.addChatMessage(this, "Jarvis: $text")
     }
 
     override fun onBind(intent: Intent?): IBinder? {

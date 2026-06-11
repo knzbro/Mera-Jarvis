@@ -21,6 +21,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -310,7 +311,47 @@ fun JarvisDashboard(
 fun TextJarvisScreen() {
     val context = LocalContext.current
     var inputText by remember { mutableStateOf("") }
-    var chatHistory by remember { mutableStateOf(listOf("Jarvis: I am online. How can I help you, Kashif Bhai?")) }
+    var chatHistory by remember { mutableStateOf(emptyList<String>()) }
+    val listState = rememberLazyListState()
+
+    // Load initial chat history from persistent storage
+    LaunchedEffect(Unit) {
+        val history = com.example.util.JarvisPreferences.getChatHistory(context)
+        if (history.isEmpty()) {
+            val defaultMsg = "Jarvis: Main hazir hoon, Kashif Bhai. Ask me anything!"
+            com.example.util.JarvisPreferences.saveChatHistory(context, listOf(defaultMsg))
+            chatHistory = listOf(defaultMsg)
+        } else {
+            chatHistory = history
+        }
+    }
+
+    // Auto-scroll when size changes
+    LaunchedEffect(chatHistory.size) {
+        if (chatHistory.isNotEmpty()) {
+            listState.animateScrollToItem(chatHistory.size - 1)
+        }
+    }
+
+    // Live update broadcast receiver to sync other modules / spoken returns
+    DisposableEffect(context) {
+        val receiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                if (intent?.action == "com.example.JARVIS_CHAT_UPDATED") {
+                    chatHistory = com.example.util.JarvisPreferences.getChatHistory(context)
+                }
+            }
+        }
+        val filter = android.content.IntentFilter("com.example.JARVIS_CHAT_UPDATED")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(receiver, filter)
+        }
+        onDispose {
+            context.unregisterReceiver(receiver)
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -319,9 +360,26 @@ fun TextJarvisScreen() {
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text("TEXT TO TEXT JARVIS", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = JarvisCyan)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("TEXT TO TEXT JARVIS", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = JarvisCyan)
+                IconButton(
+                    onClick = {
+                        com.example.util.JarvisPreferences.clearChatHistory(context)
+                        val resetMsg = "Jarvis: Main hazir hoon, Kashif Bhai. Chat logs empty."
+                        chatHistory = listOf(resetMsg)
+                        com.example.util.JarvisPreferences.saveChatHistory(context, chatHistory)
+                    }
+                ) {
+                    Icon(imageVector = Icons.Default.Delete, contentDescription = "Clear Chat Log", tint = Color.Red.copy(alpha = 0.8f))
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
@@ -363,19 +421,14 @@ fun TextJarvisScreen() {
             )
             IconButton(
                 onClick = {
-                    if (inputText.isNotBlank()) {
-                        chatHistory = chatHistory + "You: $inputText"
-                        val lowerCmd = inputText.lowercase()
-                        val response = when {
-                            lowerCmd.contains("flash light on") || lowerCmd.contains("flashlight on") -> "Jarvis: Flashlight on kar di hai."
-                            lowerCmd.contains("flash light off") || lowerCmd.contains("flashlight off") -> "Jarvis: Flashlight off kar di hai."
-                            else -> "Jarvis: Command received. Processing..."
-                        }
-                        chatHistory = chatHistory + response
+                    val commandText = inputText.trim()
+                    if (commandText.isNotBlank()) {
+                        // Persist user prompt
+                        com.example.util.JarvisPreferences.addChatMessage(context, "You: $commandText")
                         
-                        // Pass command to service
+                        // Pass command to service as text intent
                         val intent = Intent(context, com.example.services.JarvisVoiceService::class.java)
-                        intent.putExtra("COMMAND", inputText)
+                        intent.putExtra("COMMAND", commandText)
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             context.startForegroundService(intent)
                         } else {
@@ -682,7 +735,24 @@ fun JarvisSettings(modifier: Modifier = Modifier) {
                         "Turn Bluetooth Off" to "bluetooth_off",
                         "Navigate to Home Screen" to "go_home",
                         "Show Recent Apps" to "show_recents",
-                        "Play Song in Pro Folder" to "play_song"
+                        "Play Song in Pro Folder" to "play_song",
+                        "Activate Airplane Settings" to "toggle_airplane_mode",
+                        "Power Controls Context Menu" to "power_dialog",
+                        "Lock Screen Device Secure" to "lock_screen",
+                        "Open Quick Settings Bar" to "open_quick_settings",
+                        "Open Notification Settings" to "open_notifications",
+                        "Check Device Battery Power" to "battery_status",
+                        "Raise Stream Music Volume" to "volume_up",
+                        "Low Stream Music Volume" to "volume_down",
+                        "Mute Dynamic Sound Streams" to "mute",
+                        "Reset Sound Stream Levels" to "unmute",
+                        "Open Primary Android Web" to "open_browser",
+                        "Search Engine Query Core" to "search_google",
+                        "Get Local Time Clock" to "get_time",
+                        "Check Calendar Dates" to "get_date",
+                        "Set Device Timers Sync" to "set_timer",
+                        "Create Plain Note Record" to "create_note",
+                        "Open Files Pro Level Folder" to "open_custom_folder"
                     )
 
                     actionsList.forEach { (label, actValue) ->
