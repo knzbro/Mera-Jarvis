@@ -238,6 +238,7 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
         if (matchedTrained != null) {
             val tc = matchedTrained
             Log.d(TAG, "Matched trained custom command: Trigger='${tc.trigger}' -> Action='${tc.action}'")
+            com.example.util.JarvisPreferences.addChatMessage(this, "Jarvis: ${tc.response}")
             com.example.util.JarvisLogger.success("SYS_CORE", "Custom command matched offline! (Trigger: ${tc.trigger})")
             
             // Speak custom reply
@@ -248,13 +249,23 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
             
             // Trigger target custom action
             if (tc.action != "voice_reply" && tc.action != "reply" && tc.action != "none") {
-                executeAction(tc.action, "")
+                // EXTREMELY SMART: Extract trailing spoken suffix as parameter/argument!
+                var extraArg = ""
+                val tgLower = tc.trigger.trim().lowercase()
+                val lowerOriginal = originalCmd.lowercase()
+                val idx = lowerOriginal.indexOf(tgLower)
+                if (idx != -1) {
+                    val suffix = originalCmd.substring(idx + tgLower.length).trim()
+                    if (suffix.isNotBlank()) {
+                        extraArg = suffix
+                    }
+                }
+                executeAction(tc.action, extraArg)
             }
             return
         }
 
-        // --- 2. DEEP NLP BACKEND (GEMINI / OPENROUTER) ---
-        // Strip wake terms to extract the pristine command for Gemini
+        // Strip wake terms to extract the pristine command for local & Gemini check
         val cleanedCmd = originalCmd
             .replace("jarvis", "", ignoreCase = true)
             .replace("bhai", "", ignoreCase = true)
@@ -262,6 +273,14 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
             .replace("please", "", ignoreCase = true)
             .trim()
 
+        // --- 2. LOCAL OFFLINE STANDARD COMMANDS INTERCEPTOR ---
+        if (tryLocalOfflineCommand(cleanedCmd)) {
+            Log.d(TAG, "Command handled offline successfully: $cleanedCmd")
+            com.example.util.JarvisLogger.success("SYS_CORE", "Macro action processed offline! ($cleanedCmd)")
+            return
+        }
+
+        // --- 3. DEEP NLP BACKEND (GEMINI / OPENROUTER) ---
         Log.d(TAG, "Sending processed voice command to Gemini AI: $cleanedCmd")
         com.example.util.JarvisLogger.info("GEMINI_API", "Dispatched NLP prompt: \"$cleanedCmd\"")
         
@@ -799,6 +818,291 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
         } catch (e: Exception) {
             speakOut("Power diagnostics check metrics failure.")
         }
+    }
+
+    private fun tryLocalOfflineCommand(cleanedCmd: String): Boolean {
+        val lower = cleanedCmd.lowercase(Locale.getDefault()).trim()
+        
+        when {
+            // 1. FLASHLIGHT ON
+            lower.contains("flashlight on") || lower.contains("flash light on") || 
+            lower.contains("torch on") || lower.contains("torch jalao") || 
+            lower.contains("flashlight jalao") -> {
+                toggleFlashlight(true)
+                speakOut("Kashif Bhai, flashlight on kar di hai.")
+                return true
+            }
+            // 2. FLASHLIGHT OFF
+            lower.contains("flashlight off") || lower.contains("flash light off") || 
+            lower.contains("torch off") || lower.contains("torch bujhao") || 
+            lower.contains("flashlight band") -> {
+                toggleFlashlight(false)
+                speakOut("Kashif Bhai, flashlight band kar di hai.")
+                return true
+            }
+            // 3. WIFI ON
+            lower.contains("wifi on") || lower.contains("wi-fi on") || 
+            lower.contains("wifi kholo") || lower.contains("wifi chalao") -> {
+                toggleWifi(true)
+                return true
+            }
+            // 4. WIFI OFF
+            lower.contains("wifi off") || lower.contains("wi-fi off") || 
+            lower.contains("wifi band") -> {
+                toggleWifi(false)
+                return true
+            }
+            // 5. BLUETOOTH ON
+            lower.contains("bluetooth on") || lower.contains("bluetooth kholo") || 
+            lower.contains("bluetooth chalao") -> {
+                toggleBluetooth(true)
+                return true
+            }
+            // 6. BLUETOOTH OFF
+            lower.contains("bluetooth off") || lower.contains("bluetooth band") -> {
+                toggleBluetooth(false)
+                return true
+            }
+            // 7. TIME STATUS
+            lower.contains("time") || lower.contains("waqt") || 
+            lower.contains("kitne baj") || lower.contains("aaj ka waqt") -> {
+                speakCurrentTime()
+                return true
+            }
+            // 8. DATE STATUS
+            lower.contains("date") || lower.contains("tareekh") || 
+            lower.contains("aaj kya tareekh") || lower.contains("aaj kya din") -> {
+                speakCurrentDate()
+                return true
+            }
+            // 9. BATTERY STATUS
+            lower.contains("battery") || lower.contains("charge") || 
+            lower.contains("charging") || lower.contains("power status") -> {
+                speakBatteryStatus()
+                return true
+            }
+            // 10. RECENT APPS VIEW
+            lower.contains("show recents") || lower.contains("recent apps") || 
+            lower.contains("recents") || lower.contains("chalne wali apps") -> {
+                showRecents()
+                return true
+            }
+            // 11. GO HOME SCREEN
+            lower.contains("go home") || lower.contains("home screen") || 
+            lower.contains("peeche jao") || lower.contains("exit desk") -> {
+                goHome()
+                return true
+            }
+            // 12. MUSIC SONG PLAYBACK
+            lower.contains("play song") || lower.contains("gaana chalao") || 
+            lower.contains("music") || lower.contains("sound track") -> {
+                playSongInProLevel()
+                return true
+            }
+            // 13. SCREENSHOT GET
+            lower.contains("screenshot") || lower.contains("snap screen") || 
+            lower.contains("tasveer") -> {
+                triggerAccessibilityAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT, "Kashif Bhai, screenshot access ke liye accessibility permissions active kijiye.")
+                return true
+            }
+            // 14. DATA CELLULAR SETTINGS
+            lower.contains("data settings") || lower.contains("mobile data") || 
+            lower.contains("internet option") || lower.contains("roaming status") -> {
+                toggleMobileData()
+                return true
+            }
+            // 15. VOLUME INCREMENT
+            lower.contains("volume up") || lower.contains("volume barhao") || 
+            lower.contains("awaaz tez") || lower.contains("awaaz barhao") -> {
+                adjustVolume(true)
+                return true
+            }
+            // 16. VOLUME DECREMENT
+            lower.contains("volume down") || lower.contains("volume kam") || 
+            lower.contains("awaaz dhi") || lower.contains("awaaz kam") -> {
+                adjustVolume(false)
+                return true
+            }
+            // 17. SILENT DEVICE
+            lower.contains("mute") || lower.contains("silent") || 
+            lower.contains("khamosh") || lower.contains("sound off") -> {
+                muteDevice(true)
+                return true
+            }
+            // 18. RESET SOUND CHANNEL
+            lower.contains("unmute") || lower.contains("sound on") || 
+            lower.contains("bolna") || lower.contains("awaaz kholo") -> {
+                muteDevice(false)
+                return true
+            }
+            // 19. OPEN CYBER DIRECTORY FILES
+            lower.contains("open folder") || lower.contains("pro folder") || 
+            lower.contains("custom folder") || lower.contains("pro level folder") || 
+            lower.contains("files kholo") -> {
+                openCustomFolder()
+                return true
+            }
+            // 20. CREATE FILE ACCORDINGLY
+            lower.contains("create file") || lower.contains("file banao") || 
+            lower.contains("fayl banao") -> {
+                handleFileCommand("create")
+                return true
+            }
+            // 21. CLEAR LOG DATABASE
+            lower.contains("clear logs") || lower.contains("logs saaf") || 
+            lower.contains("logs delete") -> {
+                clearJarvisLogs()
+                return true
+            }
+            // 22. ACTION AIRPLANE TOGGLE
+            lower.contains("airplane mode") || lower.contains("flight mode") || 
+            lower.contains("airplane settings") -> {
+                openAirplaneModeSettings()
+                return true
+            }
+            // 23. OPEN NOTIFICATIONS DRAWER
+            lower.contains("notification drawer") || lower.contains("open notifications") || 
+            lower.contains("notifications dikhao") || lower.contains("notification panel") -> {
+                triggerAccessibilityAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS, "Notifications load karne me permission block hai.")
+                return true
+            }
+            // 24. OPEN QUICK SETTINGS BAR
+            lower.contains("quick settings") || lower.contains("open switches") || 
+            lower.contains("switches bar") -> {
+                triggerAccessibilityAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS, "Quick settings load nahi ho saken.")
+                return true
+            }
+            // 25. GO POWER OVERLAY
+            lower.contains("power menu") || lower.contains("restart options") || 
+            lower.contains("shutdown menu") || lower.contains("power options") -> {
+                triggerAccessibilityAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_POWER_DIALOG, "Power options accessibility check kijiye.")
+                return true
+            }
+            // 26. SECURE SCREEN LOCK
+            lower.contains("lock screen") || lower.contains("lock mobile") || 
+            lower.contains("screen lock") || lower.contains("mobile lock") -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    triggerAccessibilityAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN, "Screen lock gesture access required active accessibility permission.")
+                } else {
+                    speakOut("Platform secure lock options secure nahi support karta.")
+                }
+                return true
+            }
+            // 27. OPEN GOOGLE CHROME/BROWSER IN MOBILE
+            lower.contains("open browser") || lower.contains("web search") || 
+            lower.contains("website kholo") || lower.contains("chrome kholo") -> {
+                val url = if (lower.contains("open ") || lower.contains("kholo ")) {
+                    val cleanUrl = lower.replace("open browser", "")
+                        .replace("open chrome", "")
+                        .replace("chrome kholo", "")
+                        .replace("open", "")
+                        .replace("kholo", "")
+                        .trim()
+                    cleanUrl
+                } else ""
+                openBrowserWeb(url)
+                return true
+            }
+            // 28. OPEN YOUTUBE OR STREAM
+            lower.contains("youtube") || lower.contains("video chalao") -> {
+                val q = lower.replace("youtube", "")
+                    .replace("open youtube", "")
+                    .replace("youtube search", "")
+                    .replace("chalao", "")
+                    .replace("on youtube", "")
+                    .trim()
+                openYouTube(q)
+                return true
+            }
+            // 29. NAVIGATE MAPS
+            lower.contains("maps") || lower.contains("rasta dikhao") || 
+            lower.contains("navigation") || lower.contains("location kholo") -> {
+                val destination = lower.replace("open google maps", "")
+                    .replace("google maps", "")
+                    .replace("maps", "")
+                    .replace("rasta dikhao", "")
+                    .replace("navigation", "")
+                    .replace("kholo", "")
+                    .trim()
+                openGoogleMaps(destination)
+                return true
+            }
+            // 30. CREATE QUICK MEMO / TEXT NOTE ON DISK OF DEVICE
+            lower.contains("create note") || lower.contains("note banao") || 
+            lower.contains("note likho") || lower.contains("save note") -> {
+                val noteText = cleanedCmd.replace("create note", "", ignoreCase = true)
+                    .replace("note banao", "", ignoreCase = true)
+                    .replace("note likho", "", ignoreCase = true)
+                    .replace("save note", "", ignoreCase = true)
+                    .replace("note", "", ignoreCase = true)
+                    .trim()
+                createNoteOnDisk(noteText)
+                return true
+            }
+            // 31. DEVICE SCHEDULERS TIMER SETTINGS
+            lower.contains("set timer") || lower.contains("timer lagaao") || 
+            lower.contains("countdown chalao") || lower.contains("timer set") -> {
+                val secondsStr = lower.replace("set timer", "")
+                    .replace("timer lagaao", "")
+                    .replace("countdown", "")
+                    .replace("seconds", "")
+                    .replace("sec", "")
+                    .replace("seconds ka", "")
+                    .replace("minute ka", "")
+                    .trim()
+                val parsedSecs = if (secondsStr.contains("one") || secondsStr.contains("ek")) {
+                    "60"
+                } else if (secondsStr.contains("two") || secondsStr.contains("do")) {
+                    "120"
+                } else {
+                    secondsStr.filter { it.isDigit() }
+                }
+                setSystemTimer(parsedSecs)
+                return true
+            }
+            // 32. AUTO WHATSAPP / NOTIFICATION REPLY PROTOCOL
+            lower.contains("reply notification") || lower.contains("reply message") || 
+            lower.contains("reply kro") || lower.contains("whatsapp reply") -> {
+                val replyText = cleanedCmd.replace("reply notification", "", ignoreCase = true)
+                    .replace("reply message", "", ignoreCase = true)
+                    .replace("whatsapp reply", "", ignoreCase = true)
+                    .replace("reply kro", "", ignoreCase = true)
+                    .replace("reply", "", ignoreCase = true)
+                    .trim()
+                val success = JarvisNotificationService.replyToSender(this, replyText, replyText) ||
+                              JarvisNotificationService.replyToLastNotification(this, replyText)
+                if (success) {
+                    Toast.makeText(this, "Reply Draft Sent: $replyText", Toast.LENGTH_SHORT).show()
+                } else {
+                    speakOut("Kashif Bhai, reply bhejney ke liye active notifications ya WhatsApp content access milna mushkil hai.")
+                }
+                return true
+            }
+            // 33. GOOGLE SEARCH PARSING QUERY
+            lower.startsWith("search ") || lower.contains("google search") || 
+            lower.startsWith("google kero ") || lower.startsWith("ask google ") -> {
+                val q = cleanedCmd.replace("search", "", ignoreCase = true)
+                    .replace("google search", "", ignoreCase = true)
+                    .replace("google kero", "", ignoreCase = true)
+                    .trim()
+                searchOnGoogle(q)
+                return true
+            }
+            // 34. GENERAL OPEN APP FALLBACK
+            lower.startsWith("open ") || lower.contains("kholo ") || 
+            lower.startsWith("launch ") || lower.contains("chalao ") -> {
+                val targetApp = lower.replace("open ", "")
+                    .replace("kholo ", "")
+                    .replace("launch ", "")
+                    .replace("chalao ", "")
+                    .trim()
+                if (targetApp.isNotBlank()) {
+                    openAppByName(targetApp)
+                    return true
+                }
+            }
+        }
+        return false
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

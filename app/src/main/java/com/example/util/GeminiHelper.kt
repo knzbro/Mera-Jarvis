@@ -166,7 +166,7 @@ object GeminiHelper {
 
                     val optCleanJson = parseOpenRouterResponse(responseStr)
                     if (optCleanJson != null) {
-                        val parsed = parseActionResponseJson(optCleanJson)
+                        val parsed = parseActionResponseJson(context, optCleanJson)
                         if (parsed != null) return@withContext parsed
                     }
                 }
@@ -228,7 +228,7 @@ object GeminiHelper {
 
                     val cleanJson = parseGeminiResponse(bodyStr)
                     if (cleanJson != null) {
-                        val parsed = parseActionResponseJson(cleanJson)
+                        val parsed = parseActionResponseJson(context, cleanJson)
                         if (parsed != null) return@withContext parsed
                     }
                 }
@@ -270,12 +270,144 @@ object GeminiHelper {
         }
     }
 
-    private fun parseActionResponseJson(jsonStr: String): JarvisActionResponse? {
+    private fun parseActionResponseJson(context: Context, jsonStr: String): JarvisActionResponse? {
         return try {
             val parsedObj = JSONObject(jsonStr)
-            val respText = parsedObj.optString("response", "")
-            val action = parsedObj.optString("action", "none")
-            val arg = parsedObj.optString("arg", "")
+            
+            // Handle optional error_popup direct node
+            if (parsedObj.has("error_popup")) {
+                val errorPopup = parsedObj.optJSONObject("error_popup")
+                if (errorPopup != null) {
+                    val title = errorPopup.optString("title", "Jarvis Error")
+                    val message = errorPopup.optString("message", "An unexpected runtime anomaly occurred.")
+                    triggerErrorBroadcast(context, title, message)
+                }
+            }
+
+            // Extract spoken response
+            var respText = parsedObj.optString("response", "")
+            if (respText.isEmpty()) {
+                respText = parsedObj.optString("greet", "")
+            }
+
+            var action = "none"
+            var arg = ""
+
+            // Format 1: Standard direct fields
+            if (parsedObj.has("action")) {
+                action = parsedObj.optString("action", "none")
+                arg = parsedObj.optString("arg", "")
+            } 
+            // Format 2: Actions array
+            else if (parsedObj.has("actions")) {
+                val actionsArray = parsedObj.optJSONArray("actions")
+                if (actionsArray != null && actionsArray.length() > 0) {
+                    val firstAction = actionsArray.optJSONObject(0)
+                    if (firstAction != null) {
+                        val cmd = firstAction.optString("command", "").uppercase()
+                        val state = firstAction.optString("state", "").uppercase()
+                        
+                        // Map macro commands to our local execute action names
+                        when (cmd) {
+                            "TOGGLE_FLASHLIGHT" -> {
+                                action = if (state == "ON" || state == "TRUE") "flashlight_on" else "flashlight_off"
+                            }
+                            "SET_VOLUME_PROFILE" -> {
+                                action = if (state == "UP") "volume_up" else if (state == "DOWN") "volume_down" else if (state == "MUTE") "mute" else "unmute"
+                            }
+                            "GET_BATTERY_SYSTEM", "BATTERY_STATUS" -> {
+                                action = "battery_status"
+                            }
+                            "TAKE_SCREENSHOT_HIDDEN", "TAKE_SCREENSHOT" -> {
+                                action = "take_screenshot"
+                            }
+                            "LAUNCH_APP_PACKAGE", "OPEN_APP" -> {
+                                action = "open_app"
+                                arg = state
+                                if (arg.isEmpty()) arg = firstAction.optString("package", "")
+                                if (arg.isEmpty()) arg = firstAction.optString("app", "")
+                            }
+                            "VIEW_RECENT_APPS", "SHOW_RECENTS" -> {
+                                action = "show_recents"
+                            }
+                            "GO_HOME" -> {
+                                action = "go_home"
+                            }
+                            "PLAY_SONG" -> {
+                                action = "play_song"
+                            }
+                            "CREATE_NOTE" -> {
+                                action = "create_note"
+                                arg = firstAction.optString("content", "")
+                            }
+                            "OPEN_CUSTOM_FOLDER" -> {
+                                action = "open_custom_folder"
+                            }
+                            "SET_TIMER" -> {
+                                action = "set_timer"
+                                arg = firstAction.optString("duration", "60")
+                            }
+                            "GET_TIME" -> {
+                                action = "get_time"
+                            }
+                            "GET_DATE" -> {
+                                action = "get_date"
+                            }
+                            "SEARCH_GOOGLE" -> {
+                                action = "search_google"
+                                arg = firstAction.optString("query", "")
+                            }
+                            "OPEN_YOUTUBE" -> {
+                                action = "open_youtube"
+                                arg = firstAction.optString("query", "")
+                            }
+                            "OPEN_GOOGLE_MAPS" -> {
+                                action = "open_google_maps"
+                                arg = firstAction.optString("destination", "")
+                            }
+                            "OPEN_NOTIFICATIONS" -> {
+                                action = "open_notifications"
+                            }
+                            "OPEN_QUICK_SETTINGS" -> {
+                                action = "open_quick_settings"
+                            }
+                            "LOCK_SCREEN" -> {
+                                action = "lock_screen"
+                            }
+                            "POWER_DIALOG" -> {
+                                action = "power_dialog"
+                            }
+                            "OPEN_BROWSER" -> {
+                                action = "open_browser"
+                                arg = firstAction.optString("url", "")
+                            }
+                            "CLEAR_LOGS" -> {
+                                action = "clear_logs"
+                            }
+                            "TOGGLE_AIRPLANE_MODE" -> {
+                                action = "toggle_airplane_mode"
+                            }
+                            "WIFI_ON" -> {
+                                action = "wifi_on"
+                            }
+                            "WIFI_OFF" -> {
+                                action = "wifi_off"
+                            }
+                            "BLUETOOTH_ON" -> {
+                                action = "bluetooth_on"
+                            }
+                            "BLUETOOTH_OFF" -> {
+                                action = "bluetooth_off"
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (respText.isEmpty() && action == "none") {
+                return null
+            }
+
             JarvisActionResponse(respText, action, arg)
         } catch (e: Exception) {
             Log.e(TAG, "Failed parsing Jarvis action blocks from text: $jsonStr", e)

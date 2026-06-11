@@ -81,20 +81,20 @@ class JarvisGlowView(context: Context) : View(context) {
         // Use the same dynamic flowing gradient for the neon vibe
         glowPaint.shader = horizontalGradient
         glowPaint.alpha = (45 + (35 * progress)).toInt().coerceIn(0, 255)
-        val auraHeightPx = 6f * density
+        val auraHeightPx = h
         canvas.drawRect(0f, 0f, w, auraHeightPx, glowPaint)
 
         // B. MID-LEVEL CONCENTRATED LASER (Vibrant Cyan Core)
         glowPaint.shader = null
         glowPaint.color = Color.parseColor("#00E5FF") // Electric Neon Cyan
         glowPaint.alpha = (140 + (60 * progress)).toInt().coerceIn(0, 255)
-        val laserHeightPx = 2.2f * density
+        val laserHeightPx = h * 0.45f
         canvas.drawRect(0f, 0f, w, laserHeightPx, glowPaint)
 
         // C. HYPER-FINE ULTRATHIN HOT INNER WIRE (Super bareek, blinding hot white fluorescent core)
         glowPaint.color = Color.parseColor("#FFFFFF") // Brilliantly glowing hot white
         glowPaint.alpha = 255
-        val coreHeightPx = 0.8f * density // Hyper fine 0.8dp thickness
+        val coreHeightPx = h * 0.18f
         canvas.drawRect(0f, 0f, w, coreHeightPx, glowPaint)
     }
 
@@ -122,7 +122,7 @@ class JarvisGlowOverlayService : Service() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         glowView = JarvisGlowView(this)
 
-        val heightInDp = 35
+        val heightInDp = 8
         val density = resources.displayMetrics.density
         val heightInPx = (heightInDp * density).toInt()
 
