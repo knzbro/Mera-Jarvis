@@ -75,11 +75,7 @@ class MainActivity : ComponentActivity() {
                             composable("dashboard") {
                                 JarvisDashboard(
                                     onOpenAccessibilitySettings = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
-                                    onOpenNotificationSettings = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) },
-                                    onOpenOverlaySettings = { 
-                                        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
-                                        startActivity(intent)
-                                    }
+                                    onOpenNotificationSettings = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
                                 )
                             }
                             composable("text_jarvis") {
@@ -101,8 +97,7 @@ class MainActivity : ComponentActivity() {
 fun JarvisDashboard(
     modifier: Modifier = Modifier,
     onOpenAccessibilitySettings: () -> Unit,
-    onOpenNotificationSettings: () -> Unit,
-    onOpenOverlaySettings: () -> Unit
+    onOpenNotificationSettings: () -> Unit
 ) {
     val context = LocalContext.current
     var isJarvisActive by remember { mutableStateOf(com.example.util.JarvisPreferences.isJarvisActive(context)) }
@@ -145,6 +140,19 @@ fun JarvisDashboard(
             // Activation Button
             Button(
                 onClick = { 
+                    if (!isJarvisActive) {
+                        val hasMicPermission = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                        if (!hasMicPermission) {
+                            android.widget.Toast.makeText(
+                                context,
+                                "Kashif Bhai, pehle Microphone permission allow kijiye!",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                            permissionLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+                            return@Button
+                        }
+                    }
+
                     isJarvisActive = !isJarvisActive 
                     com.example.util.JarvisPreferences.setJarvisActive(context, isJarvisActive)
                     val serviceIntent = Intent(context, com.example.services.JarvisVoiceService::class.java)
@@ -208,7 +216,8 @@ fun JarvisDashboard(
 
             SystemLogsCard()
             ActiveMandateCard()
-            PermissionsSection(onOpenAccessibilitySettings, onOpenNotificationSettings, onOpenOverlaySettings)
+            DownloadJarvisApkCard()
+            PermissionsSection(onOpenAccessibilitySettings, onOpenNotificationSettings)
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
@@ -314,7 +323,7 @@ fun JarvisSettings(modifier: Modifier = Modifier) {
     var voiceWakeEnabled by remember { mutableStateOf(com.example.util.JarvisPreferences.getBoolean(context, "voice_wake_enabled", true)) }
     var notificationReadEnabled by remember { mutableStateOf(com.example.util.JarvisPreferences.getBoolean(context, "notification_read_enabled", true)) }
     var voiceToVoiceEnabled by remember { mutableStateOf(com.example.util.JarvisPreferences.getBoolean(context, "voice_to_voice_enabled", true)) }
-    var overlayEnabled by remember { mutableStateOf(com.example.util.JarvisPreferences.getBoolean(context, "overlay_enabled", true)) }
+    var wakeWordSensitivity by remember { mutableStateOf(com.example.util.JarvisPreferences.getString(context, "wake_word_sensitivity", "MEDIUM")) }
 
     Column(
         modifier = modifier
@@ -388,16 +397,26 @@ fun JarvisSettings(modifier: Modifier = Modifier) {
         Column(modifier = Modifier.fillMaxWidth().background(JarvisCardBg, RoundedCornerShape(16.dp)).border(1.dp, JarvisCardBorder, RoundedCornerShape(16.dp)).padding(16.dp)) {
             Text("AUTOMATION & VOICE", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = JarvisTextMuted, letterSpacing = 2.sp)
             Spacer(modifier = Modifier.height(16.dp))
-            SwitchSettingItem("Display Over Other Apps", "Enforce lock screen & tasks globally", overlayEnabled) { 
-                overlayEnabled = it 
-                com.example.util.JarvisPreferences.saveBoolean(context, "overlay_enabled", it)
-            }
             SwitchSettingItem("Voice Wake-Word (\"Jarvis\")", "Replies: 'Assalamualaikum Kashif Bhai...'", voiceWakeEnabled) { 
                 voiceWakeEnabled = it 
                 com.example.util.JarvisPreferences.saveBoolean(context, "voice_wake_enabled", it)
                 if (it) {
                     context.startService(Intent(context, com.example.services.JarvisVoiceService::class.java))
                 }
+            }
+            if (voiceWakeEnabled) {
+                SensitiveSelector(
+                    selected = wakeWordSensitivity,
+                    onSelectedChange = {
+                        wakeWordSensitivity = it
+                        com.example.util.JarvisPreferences.saveString(context, "wake_word_sensitivity", it)
+                        // Trigger speech recognizer refresh in service if running
+                        if (com.example.util.JarvisPreferences.isJarvisActive(context)) {
+                            context.startService(Intent(context, com.example.services.JarvisVoiceService::class.java))
+                        }
+                    }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
             }
             SwitchSettingItem("Voice-to-Voice Comms", "Continuous vocal interaction mode", voiceToVoiceEnabled) { 
                 voiceToVoiceEnabled = it 
@@ -468,6 +487,7 @@ fun JarvisSettings(modifier: Modifier = Modifier) {
             }
         }
         
+        DownloadJarvisApkCard()
         Spacer(modifier = Modifier.height(24.dp))
     }
 }
@@ -534,6 +554,65 @@ fun SwitchSettingItem(title: String, subTitle: String, checked: Boolean, onCheck
 }
 
 @Composable
+fun SensitiveSelector(
+    selected: String,
+    onSelectedChange: (String) -> Unit
+) {
+    val options = listOf("LOW", "MEDIUM", "HIGH")
+    
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("Wake-Word Sensitivity", color = Color.White, fontSize = 14.sp)
+                val description = when (selected.uppercase()) {
+                    "LOW" -> "Strict: Triggers only on \"Jarvis\" exact words. Excludes \"bhai\"/\"suno\" to end accidental triggers."
+                    "MEDIUM" -> "Balanced: Triggers on \"Jarvis\", or \"bhai\" only if said with a command."
+                    else -> "Responsive: Triggers on \"Jarvis\", \"bhai\", or \"suno\" instantly."
+                }
+                Text(description, color = JarvisTextMuted, fontSize = 10.sp, lineHeight = 12.sp, modifier = Modifier.padding(top = 2.dp))
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(10.dp))
+        
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(JarvisCardBg, RoundedCornerShape(8.dp))
+                .border(1.dp, JarvisCardBorder, RoundedCornerShape(8.dp)),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            options.forEach { option ->
+                val isSelected = option.equals(selected, ignoreCase = true)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(
+                            if (isSelected) JarvisCyan.copy(alpha = 0.15f) else Color.Transparent,
+                            RoundedCornerShape(8.dp)
+                        )
+                        .clickable { onSelectedChange(option) }
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = option,
+                        color = if (isSelected) JarvisCyan else JarvisTextMuted,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun JarvisHeader(isJarvisActive: Boolean) {
     Row(
         modifier = Modifier
@@ -578,29 +657,157 @@ fun CoreLoadIndicator(isJarvisActive: Boolean) {
 
 @Composable
 fun SystemLogsCard() {
-    Column(modifier = Modifier.fillMaxWidth().background(JarvisCardBg, RoundedCornerShape(16.dp)).border(1.dp, JarvisCardBorder, RoundedCornerShape(16.dp)).padding(16.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Build, contentDescription = null, tint = JarvisCyan, modifier = Modifier.size(16.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("SYSTEM LOGS", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = JarvisTextMuted, letterSpacing = 2.sp)
-        }
-        Spacer(modifier = Modifier.height(12.dp))
-        val logLines = listOf("[14:22:04] BIND_ACCESSIBILITY: SUCCESS", "[14:22:08] MAPS_SCRAPE: 12 LEADS FOUND", "[14:23:15] BLOCK_UI: Instagram.exe TERMINATED")
-        logLines.forEach { line ->
-            val time = line.substringBefore("]") + "]"
-            val message = line.substringAfter("]")
-            Row {
-                Text(time, color = Color(0xFF475569), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(message, color = JarvisCyan.copy(alpha = 0.8f), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+    val liveLogs by com.example.util.JarvisLogger.logs.collectAsState()
+    val consoleScrollState = rememberScrollState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF070B18), RoundedCornerShape(16.dp))
+            .border(1.dp, JarvisCardBorder.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+            .padding(14.dp)
+    ) {
+        // Console Titlebar with terminal indicator buttons
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // macOS style terminal windows lights
+                Box(modifier = Modifier.size(8.dp).background(Color(0xFFEF4444), CircleShape))
+                Spacer(modifier = Modifier.width(5.dp))
+                Box(modifier = Modifier.size(8.dp).background(Color(0xFFF59E0B), CircleShape))
+                Spacer(modifier = Modifier.width(5.dp))
+                Box(modifier = Modifier.size(8.dp).background(Color(0xFF10B981), CircleShape))
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    "CON_CORE_LOGSTREAM // ROOT",
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = JarvisTextMuted,
+                    letterSpacing = 1.sp
+                )
             }
-            Spacer(modifier = Modifier.height(4.dp))
+            
+            // Console Action Control buttons
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "CLEAR",
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFEF4444),
+                    modifier = Modifier
+                        .background(Color(0xFFEF4444).copy(alpha = 0.1f), RoundedCornerShape(4.dp))
+                        .clickable { com.example.util.JarvisLogger.clear() }
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                )
+                Text(
+                    text = "+ TEST SIM",
+                    fontSize = 9.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = JarvisCyan,
+                    modifier = Modifier
+                        .background(JarvisCyan.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                        .clickable {
+                            val sims = listOf(
+                                Triple("SPEECH_REC", "Kashif Bhai, continuous voice recognition standing by.", com.example.util.JarvisLogger.LogLevel.SUCCESS),
+                                Triple("WAKE_DET", "Wake-word triggered with high sensitivity.", com.example.util.JarvisLogger.LogLevel.SUCCESS),
+                                Triple("API_CALL", "Direct response from Google Gemini compiled.", com.example.util.JarvisLogger.LogLevel.INFO),
+                                Triple("SYS_OVERLAY", "Bottom cyber animation overlay loaded.", com.example.util.JarvisLogger.LogLevel.SUCCESS),
+                                Triple("CORE_ACC", "Accessibility scraped layout bounds.", com.example.util.JarvisLogger.LogLevel.WARN),
+                                Triple("APK_EXP", "Jarvis.apk compiled and initialized for sharing.", com.example.util.JarvisLogger.LogLevel.INFO)
+                            )
+                            val randomSim = sims.random()
+                            com.example.util.JarvisLogger.log(randomSim.first, randomSim.second, randomSim.third)
+                        }
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                )
+            }
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("> ", color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-            val infiniteTransition = rememberInfiniteTransition(label = "cursor")
-            val pulseAlpha by infiniteTransition.animateFloat(initialValue = 0f, targetValue = 1f, animationSpec = infiniteRepeatable(tween(500), repeatMode = RepeatMode.Reverse), label = "cursorAlpha")
-            Box(modifier = Modifier.size(6.dp, 12.dp).background(JarvisCyan.copy(alpha = pulseAlpha)))
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Log Entries Display Box
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 200.dp)
+                .background(Color(0xFF030712), RoundedCornerShape(8.dp))
+                .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp))
+                .padding(10.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(consoleScrollState)
+            ) {
+                if (liveLogs.isEmpty()) {
+                    Text(
+                        text = "[SYSTEM STALL]: Terminal idle. No active events.",
+                        color = Color(0xFF475569),
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                } else {
+                    liveLogs.forEach { log ->
+                        val timeStr = "[${log.timestamp}]"
+                        val tagStr = "${log.tag}:"
+                        val lvlColor = when (log.level) {
+                            com.example.util.JarvisLogger.LogLevel.SUCCESS -> Color(0xFF10B981)
+                            com.example.util.JarvisLogger.LogLevel.WARN -> Color(0xFFF59E0B)
+                            com.example.util.JarvisLogger.LogLevel.ERROR -> Color(0xFFEF4444)
+                            com.example.util.JarvisLogger.LogLevel.INFO -> JarvisCyan
+                        }
+
+                        Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                            // Timestamp
+                            Text(
+                                text = "$timeStr ",
+                                color = Color(0xFF475569),
+                                fontSize = 10.5.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            // Tag label
+                            Text(
+                                text = "$tagStr ",
+                                color = lvlColor.copy(alpha = 0.9f),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.5.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            // Message content
+                            Text(
+                                text = log.message,
+                                color = Color(0xFFCBD5E1),
+                                fontSize = 10.5.sp,
+                                fontFamily = FontFamily.Monospace,
+                                lineHeight = 13.sp
+                            )
+                        }
+                    }
+                }
+
+                // Breathing interactive prompt line
+                Row(
+                    modifier = Modifier.padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("jarvis@core_dashboard:~$ ", color = JarvisCyan.copy(alpha = 0.6f), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                    Spacer(modifier = Modifier.width(2.dp))
+                    val infiniteTransition = rememberInfiniteTransition(label = "cursor")
+                    val pulseAlpha by infiniteTransition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(tween(500), repeatMode = RepeatMode.Reverse),
+                        label = "cursorAlpha"
+                    )
+                    Box(modifier = Modifier.size(5.dp, 10.dp).background(JarvisCyan.copy(alpha = pulseAlpha)))
+                }
+            }
         }
     }
 }
@@ -619,33 +826,172 @@ fun ActiveMandateCard() {
 }
 
 @Composable
-fun PermissionsSection(onAuth: () -> Unit, onNotif: () -> Unit, onOverlay: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("SYSTEM ACCESS", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = JarvisTextMuted, letterSpacing = 2.sp)
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PermissionBox(modifier = Modifier.weight(1f), title = "Accessibility", status = "Mandatory", indicatorType = 1, onClick = onAuth)
-            PermissionBox(modifier = Modifier.weight(1f), title = "Notifications", status = "Required", indicatorType = 1, onClick = onNotif)
+fun PermissionsSection(
+    onOpenAccessibilitySettings: () -> Unit = {},
+    onOpenNotificationSettings: () -> Unit = {}
+) {
+    val context = LocalContext.current
+    var isAccessibilityGranted by remember { mutableStateOf(false) }
+    var isNotificationGranted by remember { mutableStateOf(false) }
+    var isMicrophoneGranted by remember { mutableStateOf(false) }
+    var isOverlayGranted by remember { mutableStateOf(false) }
+    var isStorageGranted by remember { mutableStateOf(false) }
+
+    val micLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        isMicrophoneGranted = granted
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            // Check Accessibility Service status
+            val service = context.packageName + java.io.File.separator + "com.example.services.JarvisAccessibilityService"
+            val enabledServices = Settings.Secure.getString(context.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
+            isAccessibilityGranted = enabledServices.contains(service)
+
+            // Check Notification Listener status
+            val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners") ?: ""
+            isNotificationGranted = flat.contains(context.packageName)
+
+            // Check Microphone status
+            isMicrophoneGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+            // Check Draw Over Other Apps overlay status
+            isOverlayGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Settings.canDrawOverlays(context)
+            } else {
+                true
+            }
+
+            // Check Media/External Storage status
+            isStorageGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                android.os.Environment.isExternalStorageManager()
+            } else {
+                ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+            }
+
+            kotlinx.coroutines.delay(1000)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            PermissionBox(modifier = Modifier.weight(1f), title = "Overlay View", status = "Sideloaded", indicatorType = 2, onClick = onOverlay)
-            Box(modifier = Modifier.weight(1f))
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("SYSTEM ACCESS DIAGNOSTIC", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = JarvisTextMuted, letterSpacing = 2.sp)
+        
+        // Dynamic Grid rows
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PermissionBox(
+                    modifier = Modifier.weight(1f),
+                    title = "Accessibility",
+                    status = if (isAccessibilityGranted) "ACTIVE" else "TAP TO GRANT",
+                    isGranted = isAccessibilityGranted,
+                    onClick = {
+                        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    }
+                )
+                PermissionBox(
+                    modifier = Modifier.weight(1f),
+                    title = "Notifications",
+                    status = if (isNotificationGranted) "ACTIVE" else "TAP TO GRANT",
+                    isGranted = isNotificationGranted,
+                    onClick = {
+                        val intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(intent)
+                    }
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                PermissionBox(
+                    modifier = Modifier.weight(1f),
+                    title = "Microphone",
+                    status = if (isMicrophoneGranted) "ACTIVE" else "TAP TO GRANT",
+                    isGranted = isMicrophoneGranted,
+                    onClick = {
+                        if (!isMicrophoneGranted) {
+                            micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        }
+                    }
+                )
+                PermissionBox(
+                    modifier = Modifier.weight(1f),
+                    title = "System Overlay",
+                    status = if (isOverlayGranted) "ACTIVE" else "TAP TO GRANT",
+                    isGranted = isOverlayGranted,
+                    onClick = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + context.packageName)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        }
+                    }
+                )
+            }
+
+            PermissionBox(
+                modifier = Modifier.fillMaxWidth(),
+                title = "Pro Level Files & Storage",
+                status = if (isStorageGranted) "ACTIVE / GRANTED" else "TAP TO GRANT COMPREHENSIVE STORAGE ACCESS",
+                isGranted = isStorageGranted,
+                onClick = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        try {
+                            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:" + context.packageName)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        } catch (e: Exception) {
+                            val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        }
+                    } else {
+                        micLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                    }
+                }
+            )
         }
     }
 }
 
 @Composable
-fun PermissionBox(modifier: Modifier = Modifier, title: String, status: String, indicatorType: Int, onClick: () -> Unit) {
-    Column(modifier = modifier.background(JarvisCardBg, RoundedCornerShape(12.dp)).border(1.dp, JarvisCardBorder, RoundedCornerShape(12.dp)).clickable(onClick = onClick).padding(12.dp)) {
-        Text(title.uppercase(), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = JarvisTextMuted)
-        Spacer(modifier = Modifier.height(4.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text(status, fontSize = 12.sp, color = Color.White)
-            if (indicatorType == 1) {
-                Box(modifier = Modifier.size(24.dp, 12.dp).background(JarvisCyan, CircleShape), contentAlignment = Alignment.CenterEnd) {
-                    Box(modifier = Modifier.padding(2.dp).size(8.dp).background(Color.Black, CircleShape))
-                }
+fun PermissionBox(
+    modifier: Modifier = Modifier,
+    title: String,
+    status: String,
+    isGranted: Boolean,
+    onClick: () -> Unit
+) {
+    val activeBorderColor = if (isGranted) JarvisCyan.copy(alpha = 0.4f) else Color.Red.copy(alpha = 0.4f)
+    val statusColor = if (isGranted) JarvisCyan else Color.Red
+
+    Column(
+        modifier = modifier
+            .background(JarvisCardBg, RoundedCornerShape(12.dp))
+            .border(1.dp, activeBorderColor, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(14.dp)
+    ) {
+        Text(title.uppercase(), fontSize = 9.sp, fontWeight = FontWeight.Bold, color = JarvisTextMuted, fontFamily = FontFamily.Monospace)
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(status, fontSize = 12.sp, color = statusColor, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+            if (isGranted) {
+                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = JarvisCyan, modifier = Modifier.size(16.dp))
             } else {
-                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF34D399), modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red, modifier = Modifier.size(16.dp))
             }
         }
     }
@@ -653,31 +999,77 @@ fun PermissionBox(modifier: Modifier = Modifier, title: String, status: String, 
 
 @Composable
 fun BottomNavBar(navController: NavController) {
+    val context = LocalContext.current
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val isJarvisActive = com.example.util.JarvisPreferences.isJarvisActive(context)
 
-    Row(modifier = Modifier.fillMaxWidth().height(80.dp).background(JarvisBackground).border(1.dp, Color(0x0AFFFFFF)).padding(16.dp), horizontalArrangement = Arrangement.SpaceAround, verticalAlignment = Alignment.CenterVertically) {
-        NavIcon(Icons.Default.Home, isActive = currentRoute == "dashboard", onClick = {
-            navController.navigate("dashboard") {
-                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
-            }
-        })
-        NavIcon(Icons.Default.MailOutline, isActive = currentRoute == "text_jarvis", onClick = {
-            navController.navigate("text_jarvis") {
-                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
-            }
-        })
-        NavIcon(Icons.Default.Settings, isActive = currentRoute == "settings", onClick = {
-            navController.navigate("settings") {
-                popUpTo(navController.graph.startDestinationId) { saveState = true }
-                launchSingleTop = true
-                restoreState = true
-            }
-        })
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (isJarvisActive) {
+            // Continuous flowing gradient cyan-purple lighting indicator
+            val infiniteTransition = rememberInfiniteTransition(label = "bottom_laser")
+            val animTranslate by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    tween(2500, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "translate"
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                JarvisCyan,
+                                Color(0xFFD500F9), // Neon Magenta
+                                JarvisCyan,
+                                Color.Transparent
+                            ),
+                            startX = -200f + (animTranslate * 1500f),
+                            endX = 400f + (animTranslate * 1500f)
+                        )
+                    )
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(80.dp)
+                .background(JarvisBackground)
+                .border(1.dp, Color(0x0AFFFFFF))
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            NavIcon(Icons.Default.Home, isActive = currentRoute == "dashboard", onClick = {
+                navController.navigate("dashboard") {
+                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            })
+            NavIcon(Icons.Default.MailOutline, isActive = currentRoute == "text_jarvis", onClick = {
+                navController.navigate("text_jarvis") {
+                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            })
+            NavIcon(Icons.Default.Settings, isActive = currentRoute == "settings", onClick = {
+                navController.navigate("settings") {
+                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            })
+        }
     }
 }
 
@@ -694,6 +1086,100 @@ fun NavIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, isActive: Boo
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, contentDescription = null, tint = color.copy(alpha = alpha), modifier = Modifier.size(24.dp))
+    }
+}
+
+@Composable
+fun DownloadJarvisApkCard() {
+    val context = LocalContext.current
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        Color(0xFFD500F9).copy(alpha = 0.12f),
+                        JarvisCyan.copy(alpha = 0.12f)
+                    )
+                ),
+                RoundedCornerShape(16.dp)
+            )
+            .border(
+                1.5.dp,
+                Brush.horizontalGradient(
+                    colors = listOf(Color(0xFFD500F9), JarvisCyan)
+                ),
+                RoundedCornerShape(16.dp)
+            )
+            .clickable {
+                com.example.util.ApkExporter.exportAndShareApk(context)
+            }
+            .padding(18.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "JARVIS INSTALL RESOURCE",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = JarvisCyan,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFFD500F9), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            "STABLE APK",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    "Download & Install Jarvis",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Export running Jarvis.apk package straight to your public Downloads folder, and trigger android share menu immediately for easy remote installation.",
+                    fontSize = 11.sp,
+                    color = JarvisTextMuted,
+                    lineHeight = 15.sp
+                )
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .background(Color(0xFF0F172A), CircleShape)
+                    .border(1.dp, JarvisCyan, CircleShape)
+                    .clickable {
+                        com.example.util.ApkExporter.exportAndShareApk(context)
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Share,
+                    contentDescription = "Export APK",
+                    tint = JarvisCyan,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
     }
 }
 

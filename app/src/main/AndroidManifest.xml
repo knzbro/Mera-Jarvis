@@ -73,14 +73,27 @@
             </intent-filter>
         </service>
 
-        <!-- System Overlay Service -->
-        <service android:name=".services.JarvisOverlayService" android:exported="false" />
-
         <!-- Voice Authentication Service -->
         <service 
             android:name=".services.JarvisVoiceService" 
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- Glow Overlay Service -->
+        <service 
+            android:name=".services.JarvisGlowOverlayService" 
+            android:exported="false" />
+
+        <!-- File Provider for sharing APK and backups -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
     </application>
 
