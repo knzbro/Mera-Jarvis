@@ -1,6 +1,7 @@
 package com.example
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
@@ -60,32 +61,114 @@ class MainActivity : ComponentActivity() {
             MyApplicationTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     val navController = rememberNavController()
-                    
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(innerPadding)
-                            .background(JarvisBackground)
-                    ) {
-                        NavHost(
-                            navController = navController,
-                            startDestination = "dashboard",
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            composable("dashboard") {
-                                JarvisDashboard(
-                                    onOpenAccessibilitySettings = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
-                                    onOpenNotificationSettings = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
-                                )
-                            }
-                            composable("text_jarvis") {
-                                TextJarvisScreen()
-                            }
-                            composable("settings") {
-                                JarvisSettings()
+                    var apiErrorDetails by remember { mutableStateOf<Pair<String, String>?>(null) }
+                    val context = LocalContext.current
+
+                    DisposableEffect(context) {
+                        val receiver = object : android.content.BroadcastReceiver() {
+                            override fun onReceive(ctx: android.content.Context?, intent: Intent?) {
+                                val errorType = intent?.getStringExtra("error_type") ?: "UNKNOWN_ERROR"
+                                val errorMessage = intent?.getStringExtra("error_message") ?: "An unexpected error occurred."
+                                apiErrorDetails = Pair(errorType, errorMessage)
                             }
                         }
-                        BottomNavBar(navController = navController)
+                        val filter = android.content.IntentFilter("com.example.JARVIS_API_ERROR")
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            context.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+                        } else {
+                            context.registerReceiver(receiver, filter)
+                        }
+                        onDispose {
+                            context.unregisterReceiver(receiver)
+                        }
+                    }
+
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(innerPadding)
+                                .background(JarvisBackground)
+                        ) {
+                            NavHost(
+                                navController = navController,
+                                startDestination = "dashboard",
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                composable("dashboard") {
+                                    JarvisDashboard(
+                                        onOpenAccessibilitySettings = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
+                                        onOpenNotificationSettings = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+                                    )
+                                }
+                                composable("text_jarvis") {
+                                    TextJarvisScreen()
+                                }
+                                composable("settings") {
+                                    JarvisSettings()
+                                }
+                            }
+                            BottomNavBar(navController = navController)
+                        }
+
+                        // Neon Cyber Warning Dialog Popup
+                        apiErrorDetails?.let { (type, msg) ->
+                            androidx.compose.ui.window.Dialog(onDismissRequest = { apiErrorDetails = null }) {
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp)
+                                        .border(2.dp, Color.Red, RoundedCornerShape(24.dp)),
+                                    shape = RoundedCornerShape(24.dp),
+                                    color = Color(0xFF140505)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(24.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Warning,
+                                            contentDescription = "Warning",
+                                            tint = Color.Red,
+                                            modifier = Modifier.size(56.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text(
+                                            "JARVIS API ERROR",
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.Red,
+                                            fontFamily = FontFamily.Monospace,
+                                            letterSpacing = 1.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            "SHIELD STATUS: Bypassed",
+                                            fontSize = 11.sp,
+                                            color = JarvisTextMuted,
+                                            fontFamily = FontFamily.Monospace
+                                        )
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Text(
+                                            "CODE: $type\n\n$msg",
+                                            fontSize = 13.sp,
+                                            color = Color.White,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            fontFamily = FontFamily.SansSerif
+                                        )
+                                        Spacer(modifier = Modifier.height(24.dp))
+                                        Button(
+                                            onClick = { apiErrorDetails = null },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red, contentColor = Color.White),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.fillMaxWidth().height(48.dp)
+                                        ) {
+                                            Text("DISMISS ALERT", fontWeight = FontWeight.Bold, color = Color.White)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -484,6 +567,159 @@ fun JarvisSettings(modifier: Modifier = Modifier) {
                         AllowedAppItem(appName, Icons.Default.Info, pkgName)
                     }
                 }
+            }
+        }
+
+        // --- CUSTOM OFFLINE VOICE COMMANDS TRAINER ---
+        Column(modifier = Modifier.fillMaxWidth().background(JarvisCardBg, RoundedCornerShape(16.dp)).border(1.dp, JarvisCardBorder, RoundedCornerShape(16.dp)).padding(16.dp)) {
+            Text("CUSTOM OFFLINE VOICE TRAINING", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = JarvisTextMuted, letterSpacing = 2.sp)
+            Spacer(modifier = Modifier.height(10.dp))
+            Text("Route raw spoken inputs directly to customized actions and voice answers offline.", color = JarvisTextMuted, fontSize = 13.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            var customCommands by remember { mutableStateOf(com.example.util.JarvisPreferences.getTrainedCommands(context)) }
+            var newTrigger by remember { mutableStateOf("") }
+            var newResponse by remember { mutableStateOf("") }
+            var selectedAction by remember { mutableStateOf("voice_reply") }
+            var showActionDropdown by remember { mutableStateOf(false) }
+
+            if (customCommands.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(8.dp)).padding(14.dp), contentAlignment = Alignment.Center) {
+                    Text("No custom trained commands yet. Program one below!", fontSize = 12.sp, color = JarvisTextMuted, fontStyle = FontStyle.Italic)
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    customCommands.forEach { cmd ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+                                .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(12.dp))
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("\"${cmd.trigger}\"", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = JarvisCyan)
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text("Action: ${cmd.action}", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = JarvisTextMuted)
+                                if (cmd.response.isNotBlank()) {
+                                    Text("TTS Reply: ${cmd.response}", fontSize = 12.sp, color = Color.White)
+                                }
+                            }
+                            IconButton(
+                                onClick = {
+                                    com.example.util.JarvisPreferences.removeTrainedCommand(context, cmd.trigger)
+                                    customCommands = com.example.util.JarvisPreferences.getTrainedCommands(context)
+                                }
+                            ) {
+                                Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete training", tint = Color.Red.copy(alpha = 0.8f))
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+            HorizontalDivider(color = JarvisCardBorder, thickness = 1.dp)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text("TRAIN NEW COMMAND", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = JarvisCyan, fontFamily = FontFamily.Monospace)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = newTrigger,
+                onValueChange = { newTrigger = it },
+                label = { Text("When I Say (Voice Trigger)", color = JarvisTextMuted) },
+                placeholder = { Text("e.g. hello jarvis", color = Color.DarkGray) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = JarvisCyan, unfocusedBorderColor = JarvisCardBorder, focusedTextColor = Color.White, unfocusedTextColor = Color.White),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedTextField(
+                value = newResponse,
+                onValueChange = { newResponse = it },
+                label = { Text("Jarvis Speaks (Voice Response)", color = JarvisTextMuted) },
+                placeholder = { Text("e.g. Aslam o Alaikum Kashif Bhai!", color = Color.DarkGray) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = JarvisCyan, unfocusedBorderColor = JarvisCardBorder, focusedTextColor = Color.White, unfocusedTextColor = Color.White),
+                singleLine = true
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Action Selection dropdown
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedTextField(
+                    value = selectedAction,
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Mechanical Macro Action", color = JarvisTextMuted) },
+                    modifier = Modifier.fillMaxWidth().clickable { showActionDropdown = true },
+                    trailingIcon = {
+                        IconButton(onClick = { showActionDropdown = true }) {
+                            Icon(imageVector = Icons.Default.ArrowDropDown, contentDescription = "Select Action", tint = JarvisCyan)
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = JarvisCyan, unfocusedBorderColor = JarvisCardBorder, focusedTextColor = Color.White, unfocusedTextColor = Color.White)
+                )
+
+                DropdownMenu(
+                    expanded = showActionDropdown,
+                    onDismissRequest = { showActionDropdown = false },
+                    modifier = Modifier.fillMaxWidth(0.8f).background(Color(0xFF0F0F0F)).border(1.dp, JarvisCardBorder)
+                ) {
+                    val actionsList = listOf(
+                        "Voice Reply Only (No Action)" to "voice_reply",
+                        "Turn Flashlight On" to "flashlight_on",
+                        "Turn Flashlight Off" to "flashlight_off",
+                        "Turn Wi-Fi On" to "wifi_on",
+                        "Turn Wi-Fi Off" to "wifi_off",
+                        "Turn Bluetooth On" to "bluetooth_on",
+                        "Turn Bluetooth Off" to "bluetooth_off",
+                        "Navigate to Home Screen" to "go_home",
+                        "Show Recent Apps" to "show_recents",
+                        "Play Song in Pro Folder" to "play_song"
+                    )
+
+                    actionsList.forEach { (label, actValue) ->
+                        DropdownMenuItem(
+                            text = { Text(label, color = Color.White, fontSize = 13.sp) },
+                            onClick = {
+                                selectedAction = actValue
+                                showActionDropdown = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Button(
+                onClick = {
+                    if (newTrigger.isNotBlank()) {
+                        val tc = com.example.util.TrainedCommand(
+                            trigger = newTrigger.trim(),
+                            action = selectedAction,
+                            response = newResponse.trim()
+                        )
+                        com.example.util.JarvisPreferences.addTrainedCommand(context, tc)
+                        customCommands = com.example.util.JarvisPreferences.getTrainedCommands(context)
+                        // Reset input fields
+                        newTrigger = ""
+                        newResponse = ""
+                        selectedAction = "voice_reply"
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = JarvisCyan, contentColor = Color.Black),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("SAVE VOCAL PROTOCOL", fontWeight = FontWeight.Bold, fontSize = 12.sp)
             }
         }
         

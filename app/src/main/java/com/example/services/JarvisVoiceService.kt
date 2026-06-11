@@ -215,6 +215,38 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
             return
         }
 
+        // --- 1. LOCAL CUSTOM TRAINED COMMANDS INTERCEPTOR ---
+        val trainedCmds = com.example.util.JarvisPreferences.getTrainedCommands(this)
+        var matchedTrained: com.example.util.TrainedCommand? = null
+        val lookupCmd = originalCmd.lowercase().replace("jarvis", "").replace("bhai", "").trim()
+        
+        for (tc in trainedCmds) {
+            val triggerLower = tc.trigger.trim().lowercase()
+            if (lookupCmd == triggerLower || lookupCmd.contains(triggerLower) || originalCmd.lowercase().contains(triggerLower)) {
+                matchedTrained = tc
+                break
+            }
+        }
+
+        if (matchedTrained != null) {
+            val tc = matchedTrained
+            Log.d(TAG, "Matched trained custom command: Trigger='${tc.trigger}' -> Action='${tc.action}'")
+            com.example.util.JarvisLogger.success("SYS_CORE", "Custom command matched offline! (Trigger: ${tc.trigger})")
+            
+            // Speak custom reply
+            if (tc.response.isNotBlank()) {
+                speakOut(tc.response)
+                com.example.util.JarvisLogger.success("TTS_ENGINE", "Spoken reply: \"${tc.response}\"")
+            }
+            
+            // Trigger target custom action
+            if (tc.action != "voice_reply" && tc.action != "reply" && tc.action != "none") {
+                executeAction(tc.action, "")
+            }
+            return
+        }
+
+        // --- 2. DEEP NLP BACKEND (GEMINI / OPENROUTER) ---
         // Strip wake terms to extract the pristine command for Gemini
         val cleanedCmd = originalCmd
             .replace("jarvis", "", ignoreCase = true)
@@ -229,7 +261,7 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
         // Query Gemini API
         serviceScope.launch {
             try {
-                val actionResult = GeminiHelper.processCommand(cleanedCmd)
+                val actionResult = GeminiHelper.processCommand(this@JarvisVoiceService, cleanedCmd)
                 Log.d(TAG, "Gemini Resolved Response: Speech='${actionResult.response}', Action='${actionResult.action}', Arg='${actionResult.arg}'")
                 com.example.util.JarvisLogger.success("GEMINI_API", "AI Reply: \"${actionResult.response}\" (Action -> ${actionResult.action})")
                 

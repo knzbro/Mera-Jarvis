@@ -34,6 +34,59 @@ object JarvisPreferences {
         return getPrefs(context).getString(key, default) ?: default
     }
 
+    // --- CUSTOM TRAINED COMMANDS MANAGEMENT ---
+    fun getTrainedCommands(context: Context): List<TrainedCommand> {
+        val jsonStr = getString(context, "trained_commands", "[]")
+        val list = mutableListOf<TrainedCommand>()
+        try {
+            val array = org.json.JSONArray(jsonStr)
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(
+                    TrainedCommand(
+                        trigger = obj.getString("trigger"),
+                        action = obj.getString("action"),
+                        response = obj.getString("response")
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return list
+    }
+
+    fun saveTrainedCommands(context: Context, commands: List<TrainedCommand>) {
+        try {
+            val array = org.json.JSONArray()
+            for (cmd in commands) {
+                val obj = org.json.JSONObject().apply {
+                    put("trigger", cmd.trigger)
+                    put("action", cmd.action)
+                    put("response", cmd.response)
+                }
+                array.put(obj)
+            }
+            saveString(context, "trained_commands", array.toString())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    fun addTrainedCommand(context: Context, cmd: TrainedCommand) {
+        val current = getTrainedCommands(context).toMutableList()
+        // Remove existing if trigger matches (case insensitive check)
+        current.removeAll { it.trigger.equals(cmd.trigger, ignoreCase = true) }
+        current.add(cmd)
+        saveTrainedCommands(context, current)
+    }
+
+    fun removeTrainedCommand(context: Context, trigger: String) {
+        val current = getTrainedCommands(context).toMutableList()
+        current.removeAll { it.trigger.equals(trigger, ignoreCase = true) }
+        saveTrainedCommands(context, current)
+    }
+
     fun saveBoolean(context: Context, key: String, value: Boolean) {
         getPrefs(context).edit().putBoolean(key, value).apply()
     }
@@ -50,3 +103,10 @@ object JarvisPreferences {
         return getBoolean(context, "jarvis_active", false)
     }
 }
+
+data class TrainedCommand(
+    val trigger: String,
+    val action: String,
+    val response: String
+)
+

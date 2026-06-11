@@ -69,17 +69,33 @@ class JarvisGlowView(context: Context) : View(context) {
         paint.alpha = pulsingAlpha
         canvas.drawRect(0f, 0f, w, h, paint)
 
-        // 2. High-brightness top accent neon laser line (Always shines above system bottom navigation bar)
-        paint.shader = null
-        paint.style = Paint.Style.FILL
-        paint.color = Color.parseColor("#00E5FF") // Neon Cyan Core
-        val laserProgressAlpha = (180 + (75 * progress)).toInt().coerceIn(0, 255)
-        paint.alpha = laserProgressAlpha
-        
-        // Render thin intense cyan laser line at the top boundary of the overlay height (10px deep)
+        // 2. High-brightness layered neon laser line with multi-pass glow structure (Super fine & sharp!)
         val density = resources.displayMetrics.density
-        val laserHeightPx = 3f * density
-        canvas.drawRect(0f, 0f, w, laserHeightPx, paint)
+        
+        // A. BROAD AMBIENT AURA GLOW (Fuzzy neon outline)
+        val glowPaint = Paint().apply {
+            isAntiAlias = true
+            style = Paint.Style.FILL
+        }
+        
+        // Use the same dynamic flowing gradient for the neon vibe
+        glowPaint.shader = horizontalGradient
+        glowPaint.alpha = (45 + (35 * progress)).toInt().coerceIn(0, 255)
+        val auraHeightPx = 6f * density
+        canvas.drawRect(0f, 0f, w, auraHeightPx, glowPaint)
+
+        // B. MID-LEVEL CONCENTRATED LASER (Vibrant Cyan Core)
+        glowPaint.shader = null
+        glowPaint.color = Color.parseColor("#00E5FF") // Electric Neon Cyan
+        glowPaint.alpha = (140 + (60 * progress)).toInt().coerceIn(0, 255)
+        val laserHeightPx = 2.2f * density
+        canvas.drawRect(0f, 0f, w, laserHeightPx, glowPaint)
+
+        // C. HYPER-FINE ULTRATHIN HOT INNER WIRE (Super bareek, blinding hot white fluorescent core)
+        glowPaint.color = Color.parseColor("#FFFFFF") // Brilliantly glowing hot white
+        glowPaint.alpha = 255
+        val coreHeightPx = 0.8f * density // Hyper fine 0.8dp thickness
+        canvas.drawRect(0f, 0f, w, coreHeightPx, glowPaint)
     }
 
     override fun onDetachedFromWindow() {
