@@ -47,6 +47,9 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
     private var isListening = false
     private var mediaPlayer: android.media.MediaPlayer? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main)
+    
+    private var isSpokenResponseActive = false
+    private var lastInteractionTime = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -88,6 +91,36 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             tts?.language = Locale("hi", "IN")
+            
+            // Set the UtteranceProgressListener to pause/resume listening automatically!
+            tts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {
+                    Log.d(TAG, "TTS Speech playback started: $utteranceId")
+                    isSpokenResponseActive = true
+                    JarvisGlowOverlayService.glowState = JarvisGlowOverlayService.GlowState.SPEAKING
+                    stopSpeechRecognizerOnly()
+                }
+
+                override fun onDone(utteranceId: String?) {
+                    Log.d(TAG, "TTS Speech playback completed: $utteranceId")
+                    isSpokenResponseActive = false
+                    JarvisGlowOverlayService.glowState = JarvisGlowOverlayService.GlowState.LISTENING
+                    mainHandler.post {
+                        restartListeningWithDelay(300)
+                    }
+                }
+
+                @Deprecated("Deprecated")
+                override fun onError(utteranceId: String?) {
+                    Log.e(TAG, "TTS Speech playback error")
+                    isSpokenResponseActive = false
+                    JarvisGlowOverlayService.glowState = JarvisGlowOverlayService.GlowState.IDLE
+                    mainHandler.post {
+                        restartListeningWithDelay(500)
+                    }
+                }
+            })
+
             com.example.util.JarvisLogger.success("TTS_ENGINE", "Hindustani/Indian English voice engine loaded.")
             speakOut("Kashif Bhai, Jarvis activate ho gya hai. Ab me kya kaam karu?")
             startSpeechRecognizer()
@@ -96,9 +129,29 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
         }
     }
 
+    private fun stopSpeechRecognizerOnly() {
+        mainHandler.post {
+            try {
+                if (speechRecognizer != null) {
+                    speechRecognizer?.stopListening()
+                    speechRecognizer?.destroy()
+                    speechRecognizer = null
+                    isListening = false
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error stopping recognizer: ${e.message}")
+            }
+        }
+    }
+
     private fun startSpeechRecognizer() {
         mainHandler.post {
             try {
+                if (isSpokenResponseActive) {
+                    Log.d(TAG, "SpeechRecognizer: Cancel starting because TTS output is active.")
+                    return@post
+                }
+
                 if (!JarvisPreferences.isJarvisActive(this)) {
                     Log.d(TAG, "Jarvis is not active in preferences. Stopping SpeechRecognizer.")
                     return@post
@@ -126,9 +179,11 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
                             Log.d(TAG, "SpeechRecognizer: Ready")
                             com.example.util.JarvisLogger.info("SPEECH_REC", "Continuous microphone stream listening...")
                             isListening = true
+                            JarvisGlowOverlayService.glowState = JarvisGlowOverlayService.GlowState.LISTENING
                         }
                         override fun onBeginningOfSpeech() {
                             Log.d(TAG, "SpeechRecognizer: Beginning")
+                            JarvisGlowOverlayService.glowState = JarvisGlowOverlayService.GlowState.LISTENING
                         }
                         override fun onRmsChanged(rmsdB: Float) {}
                         override fun onBufferReceived(buffer: ByteArray?) {}
@@ -149,6 +204,7 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
                             restartListeningWithDelay(delayMs)
                         }
                         override fun onResults(results: Bundle?) {
+                            JarvisGlowOverlayService.glowState = JarvisGlowOverlayService.GlowState.THENKNG
                             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                             if (!matches.isNullOrEmpty()) {
                                 val text = matches[0]
@@ -196,6 +252,11 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
         val originalCmd = command.trim()
         val lowerCmd = originalCmd.lowercase(Locale.getDefault())
         
+        // --- CONTINUOUS VOICE-TO-VOICE WALKIE-TALKIE MODE ---
+        val voiceToVoiceEnabled = JarvisPreferences.getBoolean(this, "voice_to_voice_enabled", true)
+        val timeSinceLastInteraction = System.currentTimeMillis() - lastInteractionTime
+        val isFollowUpActive = voiceToVoiceEnabled && (timeSinceLastInteraction < 20000L) // 20s active wake-free window
+
         // Check voice-wake conditions
         val sensitivity = JarvisPreferences.getString(this, "wake_word_sensitivity", "MEDIUM")
         val hasWakeWord = when (sensitivity.uppercase()) {
@@ -211,10 +272,15 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
         }
         val voiceWakeEnabled = JarvisPreferences.getBoolean(this, "voice_wake_enabled", true)
         
-        // Require wake-word ONLY for background voice inputs
-        if (!isFromText && voiceWakeEnabled && !hasWakeWord) {
-            Log.d(TAG, "Background input ignored (no wake word matched): $command")
+        // Require wake-word ONLY for background voice inputs when NOT in follow-up mode
+        if (!isFromText && voiceWakeEnabled && !hasWakeWord && !isFollowUpActive) {
+            Log.d(TAG, "Background input ignored (no wake word matched & not in follow-up): $command")
             return
+        }
+
+        // Update interaction timestamp to keep follow-up mode alive when user responds
+        if (hasWakeWord || isFollowUpActive || isFromText) {
+            lastInteractionTime = System.currentTimeMillis()
         }
 
         // Add user chat text to persistent logs if voice-activated
@@ -284,10 +350,16 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
         Log.d(TAG, "Sending processed voice command to Gemini AI: $cleanedCmd")
         com.example.util.JarvisLogger.info("GEMINI_API", "Dispatched NLP prompt: \"$cleanedCmd\"")
         
+        // Scraping current-screen if Accessibility is connected and active
+        val screenText = JarvisAccessibilityService.instance?.scrapeScreenText() ?: ""
+        if (screenText.isNotBlank()) {
+            Log.d(TAG, "Scraped screen context for AI: $screenText")
+        }
+
         // Query Gemini API
         serviceScope.launch {
             try {
-                val actionResult = GeminiHelper.processCommand(this@JarvisVoiceService, cleanedCmd)
+                val actionResult = GeminiHelper.processCommand(this@JarvisVoiceService, cleanedCmd, screenText)
                 Log.d(TAG, "Gemini Resolved Response: Speech='${actionResult.response}', Action='${actionResult.action}', Arg='${actionResult.arg}'")
                 com.example.util.JarvisLogger.success("GEMINI_API", "AI Reply: \"${actionResult.response}\" (Action -> ${actionResult.action})")
                 
@@ -316,7 +388,40 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
             "data_on" -> toggleMobileData()
             "show_recents" -> showRecents()
             "go_home" -> goHome()
-            "play_song" -> playSongInProLevel()
+            "play_song" -> {
+                if (actionArg.isNotBlank()) {
+                    playSongByName(actionArg)
+                } else {
+                    playSongInProLevel()
+                }
+            }
+            "open_yt_music" -> openYtMusic()
+            "accessibility_click" -> {
+                val success = JarvisAccessibilityService.instance?.performClickOnNode(actionArg) ?: false
+                if (success) {
+                    com.example.util.JarvisLogger.success("ACCESSIBILITY", "Clicked on screen item matching: $actionArg")
+                } else {
+                    speakOut("Bhai, screen par click target matching '$actionArg' nahi mila.")
+                }
+            }
+            "accessibility_type" -> {
+                val parts = actionArg.split("|")
+                if (parts.size >= 2) {
+                    val target = parts[0]
+                    val value = parts[1]
+                    val success = JarvisAccessibilityService.instance?.performTypeOnNode(target, value) ?: false
+                    if (success) {
+                        com.example.util.JarvisLogger.success("ACCESSIBILITY", "Typed '$value' into field: $target")
+                    } else {
+                        speakOut("Bhai, keyboard input target '$target' par text type nahi ho saka.")
+                    }
+                } else {
+                    val success = JarvisAccessibilityService.instance?.performTypeOnNode("", actionArg) ?: false
+                    if (!success) {
+                        speakOut("Bhai, input textfield automatic focus nahi khul saki.")
+                    }
+                }
+            }
             "create_file" -> handleFileCommand("create file")
             "copy_file" -> handleFileCommand("copy")
             "move_file" -> handleFileCommand("move")
@@ -576,6 +681,66 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
             } catch (ex: Exception) {
                 speakOut("Playback folder details holds no media files.")
             }
+        }
+    }
+
+    private fun playSongByName(songQuery: String) {
+        val baseDir = getExternalFilesDir(null) ?: filesDir
+        val proLevelFolder = File(baseDir, "Pro Level")
+        if (!proLevelFolder.exists()) {
+            proLevelFolder.mkdirs()
+        }
+
+        val downloadFolder = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+        val queryClean = songQuery.lowercase(Locale.ROOT).trim().removeSuffix(".mp3")
+        
+        var matchedFile = proLevelFolder.listFiles { _, name -> 
+            val ln = name.lowercase(Locale.ROOT)
+            ln.endsWith(".mp3") && (ln.contains(queryClean) || queryClean.contains(ln.removeSuffix(".mp3")))
+        }?.firstOrNull()
+
+        if (matchedFile == null && downloadFolder.exists()) {
+            matchedFile = downloadFolder.listFiles { _, name -> 
+                val ln = name.lowercase(Locale.ROOT)
+                ln.endsWith(".mp3") && (ln.contains(queryClean) || queryClean.contains(ln.removeSuffix(".mp3")))
+            }?.firstOrNull()
+        }
+
+        if (matchedFile != null) {
+            try {
+                mediaPlayer?.stop()
+                mediaPlayer?.release()
+                mediaPlayer = android.media.MediaPlayer().apply {
+                    setDataSource(matchedFile!!.absolutePath)
+                    prepare()
+                    start()
+                }
+                speakOut("Kashif Bhai, custom sound track " + matchedFile!!.name + " play kar raha hoon.")
+            } catch (e: Exception) {
+                speakOut("Audio media playback error.")
+                e.printStackTrace()
+            }
+        } else {
+            speakOut("Bhai, local folder me " + songQuery + " naam ki koi file nahi mili. Main isey YouTube par search karke play kar raha hoon.")
+            openYouTube(songQuery)
+        }
+    }
+
+    private fun openYtMusic() {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://music.youtube.com"))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val ytMusicPkg = "com.google.android.apps.youtube.music"
+            val launchIntent = packageManager.getLaunchIntentForPackage(ytMusicPkg)
+            if (launchIntent != null) {
+                startActivity(launchIntent)
+                speakOut("Launch kar raha hoon YouTube Music, Kashif Bhai.")
+            } else {
+                startActivity(intent)
+                speakOut("YT Music app installed nahi hai. Standard web player open kar raha hoon.")
+            }
+        } catch (e: Exception) {
+            speakOut("Bhai, music application load karne me default browser configuration lock hai.")
         }
     }
 

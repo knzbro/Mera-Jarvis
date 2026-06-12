@@ -21,7 +21,7 @@ class JarvisGlowView(context: Context) : View(context) {
     private val paint = Paint()
     private var progress = 0f
     private val animator = ValueAnimator.ofFloat(0f, 1f).apply {
-        duration = 2000
+        duration = 1500
         repeatCount = ValueAnimator.INFINITE
         repeatMode = ValueAnimator.REVERSE
         addUpdateListener {
@@ -40,17 +40,65 @@ class JarvisGlowView(context: Context) : View(context) {
         val h = height.toFloat()
         if (w == 0f || h == 0f) return
 
-        // 1. Dynamic multi-colored futuristic cyber gradient flowing horizontally
-        val colors = intArrayOf(
-            Color.TRANSPARENT,
-            Color.parseColor("#00E5FF"), // Neon Cyan
-            Color.parseColor("#0066FF"), // Electric Blue
-            Color.parseColor("#D500F9"), // Cyber Magenta
-            Color.parseColor("#00E5FF"), // Neon Cyan
-            Color.TRANSPARENT
-        )
+        val state = JarvisGlowOverlayService.glowState
 
-        val x0 = -w + (progress * w * 2)
+        // 1. Pick the cyber-glow color palette dynamically based on active state
+        val colors = when (state) {
+            JarvisGlowOverlayService.GlowState.LISTENING -> {
+                // Interactive Electric Green & Cyan laser
+                intArrayOf(
+                    Color.TRANSPARENT,
+                    Color.parseColor("#00FF87"), // Neon Lime Green
+                    Color.parseColor("#60EFFF"), // Crystal Ice
+                    Color.parseColor("#00E5FF"), // Vivid Cyan
+                    Color.parseColor("#00FF87"), 
+                    Color.TRANSPARENT
+                )
+            }
+            JarvisGlowOverlayService.GlowState.THENKNG -> {
+                // Fast Purple / Ultra Magenta cosmic computing wave
+                intArrayOf(
+                    Color.TRANSPARENT,
+                    Color.parseColor("#D500F9"), // Intense Purple
+                    Color.parseColor("#F50057"), // Laser Rose Pink
+                    Color.parseColor("#3F51B5"), // Indigo Deep Indigo
+                    Color.parseColor("#D500F9"),
+                    Color.TRANSPARENT
+                )
+            }
+            JarvisGlowOverlayService.GlowState.SPEAKING -> {
+                // Harmonic Amber Gold & Sapphire Blue vocal engine
+                intArrayOf(
+                    Color.TRANSPARENT,
+                    Color.parseColor("#FFD600"), // Warm Sun Amber
+                    Color.parseColor("#2979FF"), // Sapphire Blue
+                    Color.parseColor("#FF9100"), // Bright Orange
+                    Color.parseColor("#FFD600"),
+                    Color.TRANSPARENT
+                )
+            }
+            JarvisGlowOverlayService.GlowState.IDLE -> {
+                // Dim Slate Blue energy saver
+                intArrayOf(
+                    Color.TRANSPARENT,
+                    Color.parseColor("#37474F"), // Deep Slate
+                    Color.parseColor("#1DE9B6"), // Subtle Jade Teal
+                    Color.parseColor("#37474F"),
+                    Color.TRANSPARENT
+                )
+            }
+        }
+
+        // speed adjusts automatically based on active AI state
+        val speedFactor = when (state) {
+            JarvisGlowOverlayService.GlowState.THENKNG -> 2.5f
+            JarvisGlowOverlayService.GlowState.LISTENING -> 1.5f
+            JarvisGlowOverlayService.GlowState.SPEAKING -> 1.0f
+            JarvisGlowOverlayService.GlowState.IDLE -> 0.4f
+        }
+
+        val offsetW = (System.currentTimeMillis() % 10000) / 10000f * speedFactor
+        val x0 = -w + (offsetW * w * 2) % w
         val x1 = x0 + w
 
         val horizontalGradient = LinearGradient(
@@ -64,38 +112,38 @@ class JarvisGlowView(context: Context) : View(context) {
         paint.shader = horizontalGradient
         paint.style = Paint.Style.FILL
 
-        // Soft ambient underglow that fits comfortably around navigation keys
-        val pulsingAlpha = (90 + (35 * progress)).toInt().coerceIn(0, 255)
-        paint.alpha = pulsingAlpha
+        // MULTI-PASS NEON BLOOM RENDERING (Very thin, super bright core with soft outer bloom)
+        
+        // Pass A: Wide ambient aura bloom line (semi-invisible edge backlight)
+        val pulsingAlpha = if (state == JarvisGlowOverlayService.GlowState.IDLE) {
+            (25 + (15 * progress)).toInt()
+        } else {
+            (95 + (50 * progress)).toInt()
+        }
+        paint.alpha = pulsingAlpha.coerceIn(0, 255)
         canvas.drawRect(0f, 0f, w, h, paint)
 
-        // 2. High-brightness layered neon laser line with multi-pass glow structure (Super fine & sharp!)
-        val density = resources.displayMetrics.density
-        
-        // A. BROAD AMBIENT AURA GLOW (Fuzzy neon outline)
-        val glowPaint = Paint().apply {
+        // Pass B: Inner concentrated neon laser filament (50% thickness)
+        val filamentPaint = Paint().apply {
             isAntiAlias = true
             style = Paint.Style.FILL
+            shader = horizontalGradient
+            alpha = if (state == JarvisGlowOverlayService.GlowState.IDLE) 50 else 230
         }
-        
-        // Use the same dynamic flowing gradient for the neon vibe
-        glowPaint.shader = horizontalGradient
-        glowPaint.alpha = (45 + (35 * progress)).toInt().coerceIn(0, 255)
-        val auraHeightPx = h
-        canvas.drawRect(0f, 0f, w, auraHeightPx, glowPaint)
+        val filamentHeight = h * 0.5f
+        canvas.drawRect(0f, 0f, w, filamentHeight, filamentPaint)
 
-        // B. MID-LEVEL CONCENTRATED LASER (Vibrant Cyan Core)
-        glowPaint.shader = null
-        glowPaint.color = Color.parseColor("#00E5FF") // Electric Neon Cyan
-        glowPaint.alpha = (140 + (60 * progress)).toInt().coerceIn(0, 255)
-        val laserHeightPx = h * 0.45f
-        canvas.drawRect(0f, 0f, w, laserHeightPx, glowPaint)
-
-        // C. HYPER-FINE ULTRATHIN HOT INNER WIRE (Super bareek, blinding hot white fluorescent core)
-        glowPaint.color = Color.parseColor("#FFFFFF") // Brilliantly glowing hot white
-        glowPaint.alpha = 255
-        val coreHeightPx = h * 0.18f
-        canvas.drawRect(0f, 0f, w, coreHeightPx, glowPaint)
+        // Pass C: White hot fluorescent incandescent core wire (Super thin 15% thickness)
+        if (state != JarvisGlowOverlayService.GlowState.IDLE) {
+            val corePaint = Paint().apply {
+                isAntiAlias = true
+                style = Paint.Style.FILL
+                color = Color.WHITE
+                alpha = 255
+            }
+            val coreHeight = h * 0.18f
+            canvas.drawRect(0f, 0f, w, coreHeight, corePaint)
+        }
     }
 
     override fun onDetachedFromWindow() {
@@ -109,9 +157,20 @@ class JarvisGlowOverlayService : Service() {
     private var glowView: JarvisGlowView? = null
     private val TAG = "JarvisGlowOverlayService"
 
+    enum class GlowState {
+        IDLE,
+        LISTENING,
+        THENKNG, // "THENKNG" matches references exactly to ensure robust compilation
+        SPEAKING
+    }
+
+    companion object {
+        var glowState = GlowState.IDLE
+    }
+
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "Creating bottom glow overlay...")
+        Log.d(TAG, "Creating ultra-thin 4dp bottom glow overlay...")
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !android.provider.Settings.canDrawOverlays(this)) {
             Log.e(TAG, "Cannot show overlay: Draw overlay permission is missing.")
@@ -122,7 +181,8 @@ class JarvisGlowOverlayService : Service() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         glowView = JarvisGlowView(this)
 
-        val heightInDp = 8
+        // Ultra-thin fine cyber bar (Made more bareek as requested: changed from 8 to 4)
+        val heightInDp = 4
         val density = resources.displayMetrics.density
         val heightInPx = (heightInDp * density).toInt()
 
@@ -150,7 +210,8 @@ class JarvisGlowOverlayService : Service() {
 
         try {
             windowManager?.addView(glowView, params)
-            Log.d(TAG, "Glow overlay successfully added to user screen.")
+            Log.d(TAG, "Dynamic neon laser overlay successfully attached.")
+            com.example.util.JarvisLogger.success("SYS_OVERLAY", "Ultra thin dynamic laser line bound successfully.")
         } catch (e: Exception) {
             Log.e(TAG, "WindowManager addView error: ${e.message}", e)
             stopSelf()

@@ -32,7 +32,7 @@ object GeminiHelper {
         context.sendBroadcast(intent)
     }
 
-    suspend fun processCommand(context: Context, userCommand: String): JarvisActionResponse = withContext(Dispatchers.IO) {
+    suspend fun processCommand(context: Context, userCommand: String, screenTextContext: String = ""): JarvisActionResponse = withContext(Dispatchers.IO) {
         val configuredKey = JarvisPreferences.getString(context, "api_key", "").trim()
         val configuredModel = JarvisPreferences.getString(context, "model", "google/gemini-2.0-flash-exp:free").trim()
 
@@ -58,7 +58,7 @@ object GeminiHelper {
         val isOpenRouter = activeKey.startsWith("sk-or-")
 
         val systemInstruction = """
-            You are the voice and mind of "Jarvis", an advanced autonomous AI assistant built specifically for the owner Kashif Bhai.
+            You are the voice and mind of "Jarvis v3", an advanced autonomous AI digital assistant built specifically for the owner Kashif Bhai.
             Your response must ALWAYS be a valid JSON object with EXACTLY three fields:
             1. "response" (String): The Urdu/Hindi spoken text in simple transliterated English (Roman Urdu/Hindi) so it can be spoken via TextToSpeech. Keep it highly polite, calling him "Kashif Bhai", and with high-tech energy.
             2. "action" (String): One of these mechanical tags if the user commands or requests an action:
@@ -71,7 +71,10 @@ object GeminiHelper {
                - "data_on" (open cellular network cellular options settings)
                - "show_recents" (open recents overlay panel)
                - "go_home" (go to main mobile portal screen)
-               - "play_song" (fire playback sound mp3/alarm)
+               - "play_song" (Argument: song name or blank. Searches local storage matching the name and plays it)
+               - "open_yt_music" (Argument: empty. Launches YT Music app or opens music web)
+               - "accessibility_click" (Argument: EXACT text of the button, input, or label to click on Kashif Bhai's screen context)
+               - "accessibility_type" (Argument: "targetEditTextLabel|valueToType", e.g., "username|kashifbhai")
                - "create_file" (write content or create file in Pro Level folder)
                - "copy_file" (make copy duplicate of files inside backup)
                - "move_file" (transfer file to backup folder)
@@ -99,7 +102,11 @@ object GeminiHelper {
                - "toggle_airplane_mode" (open setting flight mode panels)
                - "battery_status" (report current power percentage charge)
                - "none" (simple general chit chat, status report, conversation questions, date, time answers with no system changes)
-            3. "arg" (String): An optional argument for the action. For "reply_notification", parse the specific text to reply with. For "open_app", specify the name of the app to launch (e.g. "whatsapp", "chrome", "maps", etc.). For others, set to empty string "".
+            3. "arg" (String): An optional argument for the action as defined in the list above.
+
+            SCREEN AWARENESS AUTO-PILOT INSTRUCTIONS:
+            If screen-scraping context is provided below, analyze what elements are visible. If Kashif Bhai asks to click, confirm, enter, or select something on the screen, use "accessibility_click" with correct label, or "accessibility_type" with target input label.
+            Always keep your spoken replies friendly, calling him "Kashif Bhai", in energetic Roman Urdu/Hindi.
 
             Example output for: "Jarvis torch on kardo"
             {
@@ -108,15 +115,21 @@ object GeminiHelper {
                "arg": ""
             }
 
-            Example output for: "Suno WhatsApp par reply bhej do main raste me hu"
+            Example output for: "Suno screen par login click karo"
             {
-               "response": "Kashif Bhai, main WhatsApp ka reply 'main raste me hu' bhej raha hoon.",
-               "action": "reply_notification",
-               "arg": "main raste me hu"
+               "response": "Sure Kashif Bhai, main login button par tap kar raha hoon.",
+               "action": "accessibility_click",
+               "arg": "login"
             }
 
             Return ONLY the valid JSON block. ABSOLUTELY NO markdown formatting, NO ```json wrapping. Just the raw JSON object.
         """.trimIndent()
+
+        val finalUserMsg = if (screenTextContext.isNotBlank()) {
+            "[CURRENT_VISIBLE_SCREEN_CONTENT]\n$screenTextContext\n\n[USER_COMMAND]\n$userCommand"
+        } else {
+            userCommand
+        }
 
         if (isOpenRouter) {
             // OpenRouter API Calling (OpenAI Specification)
@@ -131,7 +144,7 @@ object GeminiHelper {
                     })
                     put(JSONObject().apply {
                         put("role", "user")
-                        put("content", userCommand)
+                        put("content", finalUserMsg)
                     })
                 }
                 put("messages", messagesArray)
@@ -186,7 +199,7 @@ object GeminiHelper {
                     put(JSONObject().apply {
                         put("parts", JSONArray().apply {
                             put(JSONObject().apply {
-                                put("text", userCommand)
+                                put("text", finalUserMsg)
                             })
                         })
                     })
