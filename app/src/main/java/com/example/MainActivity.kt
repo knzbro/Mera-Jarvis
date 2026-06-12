@@ -94,7 +94,11 @@ class MainActivity : ComponentActivity() {
                             NavHost(
                                 navController = navController,
                                 startDestination = "dashboard",
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f),
+                                enterTransition = { androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(300)) + androidx.compose.animation.slideInHorizontally(initialOffsetX = { 1000 }, animationSpec = androidx.compose.animation.core.tween(300)) },
+                                exitTransition = { androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(300)) + androidx.compose.animation.slideOutHorizontally(targetOffsetX = { -1000 }, animationSpec = androidx.compose.animation.core.tween(300)) },
+                                popEnterTransition = { androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(300)) + androidx.compose.animation.slideInHorizontally(initialOffsetX = { -1000 }, animationSpec = androidx.compose.animation.core.tween(300)) },
+                                popExitTransition = { androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(300)) + androidx.compose.animation.slideOutHorizontally(targetOffsetX = { 1000 }, animationSpec = androidx.compose.animation.core.tween(300)) }
                             ) {
                                 composable("dashboard") {
                                     JarvisDashboard(

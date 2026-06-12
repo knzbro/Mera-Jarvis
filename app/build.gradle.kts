@@ -119,39 +119,3 @@ dependencies {
   "ksp"(libs.androidx.room.compiler)
   "ksp"(libs.moshi.kotlin.codegen)
 }
-
-val buildDirFile = project.layout.buildDirectory.get().asFile
-val rootDirFile = rootDir
-
-tasks.register("copyApkToBuildOutput") {
-  val srcFile = File(buildDirFile, "outputs/apk/debug/app-debug.apk")
-  val buildOutputDir1 = File(rootDirFile, ".bulid-output")
-  val buildOutputDir2 = File(rootDirFile, ".build-output")
-  val buildOutputDir3 = File(rootDirFile, "Download")
-
-  inputs.file(srcFile).withPropertyName("srcFile").optional()
-  outputs.dir(buildOutputDir1).withPropertyName("buildOutputDir1")
-  outputs.dir(buildOutputDir2).withPropertyName("buildOutputDir2")
-  outputs.dir(buildOutputDir3).withPropertyName("buildOutputDir3")
-
-  doLast {
-    if (srcFile.exists()) {
-      buildOutputDir1.mkdirs()
-      buildOutputDir2.mkdirs()
-      buildOutputDir3.mkdirs()
-      srcFile.copyTo(File(buildOutputDir1, "jarvis.apk"), overwrite = true)
-      srcFile.copyTo(File(buildOutputDir2, "jarvis.apk"), overwrite = true)
-      srcFile.copyTo(File(buildOutputDir3, "jarvis.apk"), overwrite = true)
-      println("APK copied successfully to .bulid-output/jarvis.apk, .build-output/jarvis.apk, and Download/jarvis.apk")
-    } else {
-      println("Source APK not found at ${srcFile.absolutePath}")
-    }
-  }
-}
-
-afterEvaluate {
-  tasks.matching { it.name == "assembleDebug" }.all {
-    finalizedBy("copyApkToBuildOutput")
-  }
-}
-
