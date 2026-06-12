@@ -34,6 +34,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -105,6 +107,9 @@ class MainActivity : ComponentActivity() {
                                         onOpenAccessibilitySettings = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
                                         onOpenNotificationSettings = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
                                     )
+                                }
+                                composable("gestures") {
+                                    GestureJarvisScreen()
                                 }
                                 composable("text_jarvis") {
                                     TextJarvisScreen()
@@ -933,7 +938,7 @@ fun JarvisHeader(isJarvisActive: Boolean) {
     ) {
         Column {
             Text("RUNTIME STATUS", fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = JarvisCyan.copy(alpha = 0.6f), letterSpacing = 2.sp)
-            Text("JARVIS_v1.0", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text("JARVIS_v3.2", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             val infiniteTransition = rememberInfiniteTransition(label = "pulse")
@@ -1365,6 +1370,13 @@ fun BottomNavBar(navController: NavController) {
                     restoreState = true
                 }
             })
+            NavIcon(Icons.Default.Create, isActive = currentRoute == "gestures", onClick = {
+                navController.navigate("gestures") {
+                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                    launchSingleTop = true
+                    restoreState = true
+                }
+            })
             NavIcon(Icons.Default.MailOutline, isActive = currentRoute == "text_jarvis", onClick = {
                 navController.navigate("text_jarvis") {
                     popUpTo(navController.graph.startDestinationId) { saveState = true }
@@ -1396,6 +1408,101 @@ fun NavIcon(icon: androidx.compose.ui.graphics.vector.ImageVector, isActive: Boo
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, contentDescription = null, tint = color.copy(alpha = alpha), modifier = Modifier.size(24.dp))
+    }
+}
+
+@Composable
+fun GestureJarvisScreen() {
+    val context = LocalContext.current
+    var paths by remember { mutableStateOf(listOf<androidx.compose.ui.graphics.Path>()) }
+    var currentPath by remember { mutableStateOf(androidx.compose.ui.graphics.Path()) }
+    var actionText by remember { mutableStateOf("Draw shape for workflows...") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("GESTURE CORE", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = JarvisCyan)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(actionText, color = JarvisTextMuted, fontSize = 14.sp)
+        Spacer(modifier = Modifier.height(16.dp))
+        
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .background(JarvisCardBg, RoundedCornerShape(16.dp))
+                .border(2.dp, JarvisCardBorder, RoundedCornerShape(16.dp))
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            val newPath = androidx.compose.ui.graphics.Path().apply {
+                                moveTo(offset.x, offset.y)
+                            }
+                            currentPath = newPath
+                        },
+                        onDragEnd = {
+                            paths = paths + currentPath
+                            currentPath = androidx.compose.ui.graphics.Path()
+                            actionText = "Gesture processing..."
+                            
+                            val intent = Intent(context, com.example.services.JarvisVoiceService::class.java)
+                            intent.putExtra("COMMAND", "Gesture recognized! Execute generic workflow.")
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                context.startForegroundService(intent)
+                            } else {
+                                context.startService(intent)
+                            }
+                            
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                paths = emptyList()
+                                actionText = "Awaiting input..."
+                            }, 1000)
+                        },
+                        onDrag = { change, dragAmount ->
+                            change.consume()
+                            currentPath.lineTo(change.position.x, change.position.y)
+                            val updatedPath = androidx.compose.ui.graphics.Path()
+                            updatedPath.addPath(currentPath)
+                            currentPath = updatedPath
+                        }
+                    )
+                }
+        ) {
+            androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                paths.forEach { path ->
+                    drawPath(
+                        path = path,
+                        color = JarvisCyan,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                            width = 12f,
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                            join = androidx.compose.ui.graphics.StrokeJoin.Round
+                        )
+                    )
+                }
+                drawPath(
+                    path = currentPath,
+                    color = Color.White,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                        width = 12f,
+                        cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                        join = androidx.compose.ui.graphics.StrokeJoin.Round
+                    )
+                )
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(16.dp))
+        Button(
+            onClick = { paths = emptyList(); actionText = "Cleared" },
+            colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.2f), contentColor = Color.Red),
+            modifier = Modifier.fillMaxWidth().height(48.dp)
+        ) {
+            Text("CLEAR GESTURE BUFFER")
+        }
     }
 }
 

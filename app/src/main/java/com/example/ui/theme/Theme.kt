@@ -25,15 +25,27 @@ private val DarkColorScheme =
     onSurface = Color(0xFFECEFF1)
   )
 
-private val LightColorScheme = DarkColorScheme // Keep Jarvis dark cyber theme unified always to prevent eye strain and preserve premium neon branding
+private val LightColorScheme =
+  lightColorScheme(
+    primary = Color(0xFF00BCD4),     // Bright Cyan Pro
+    secondary = Color(0xFF00C853),   // Vivid Green
+    tertiary = Color(0xFFAA00FF),    // Vivid Purple
+    background = Color(0xFFF8F9FA),  // Crisp White/Gray
+    surface = Color(0xFFFFFFFF),     // Pure White Card
+    onPrimary = Color(0xFFFFFFFF),   // White text on primary
+    onSecondary = Color(0xFFFFFFFF), // White text on secondary
+    onTertiary = Color(0xFFFFFFFF),
+    onBackground = Color(0xFF1E1E24), // High Contrast Dark text
+    onSurface = Color(0xFF1E1E24)
+  )
 
 @Composable
 fun MyApplicationTheme(
-  darkTheme: Boolean = true, // Force dark mode aesthetic by default
-  dynamicColor: Boolean = false, // Disable dynamic wallpaper colors to protect our premium cyber styling
+  darkTheme: Boolean = isSystemInDarkTheme(),
+  dynamicColor: Boolean = false, // Disable dynamic colors to keep pro neon styling
   content: @Composable () -> Unit,
 ) {
-  val colorScheme = DarkColorScheme
+  val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
 
   MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
 }
