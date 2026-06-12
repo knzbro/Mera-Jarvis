@@ -44,6 +44,11 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
     private var speechRecognizer: SpeechRecognizer? = null
     private var recognizerIntent: Intent? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val restartRunnable = Runnable {
+        if (JarvisPreferences.isJarvisActive(this@JarvisVoiceService)) {
+            startSpeechRecognizer()
+        }
+    }
     private var isListening = false
     private var mediaPlayer: android.media.MediaPlayer? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main)
@@ -196,9 +201,11 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
                             isListening = false
                             
                             val delayMs = when (error) {
-                                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 3000L
-                                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> 12000L
-                                else -> 1200L
+                                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> 1000L
+                                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> 8000L
+                                SpeechRecognizer.ERROR_NO_MATCH,
+                                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> 150L
+                                else -> 200L
                             }
                             // Restart continuous recognition with safe loop delay
                             restartListeningWithDelay(delayMs)
@@ -212,7 +219,7 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
                                 com.example.util.JarvisLogger.info("SPEECH_REC", "Captured raw: \"$text\"")
                                 handleCommand(text)
                             }
-                            restartListeningWithDelay(500)
+                            restartListeningWithDelay(250)
                         }
                         override fun onPartialResults(partialResults: Bundle?) {}
                         override fun onEvent(eventType: Int, params: Bundle?) {}
@@ -240,12 +247,8 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
     }
 
     private fun restartListeningWithDelay(delayMs: Long) {
-        mainHandler.removeCallbacksAndMessages(null)
-        mainHandler.postDelayed({
-            if (JarvisPreferences.isJarvisActive(this@JarvisVoiceService)) {
-                startSpeechRecognizer()
-            }
-        }, delayMs)
+        mainHandler.removeCallbacks(restartRunnable)
+        mainHandler.postDelayed(restartRunnable, delayMs)
     }
 
     fun handleCommand(command: String, isFromText: Boolean = false) {
