@@ -6,9 +6,11 @@ import android.os.Bundle
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.KeyEvent
 
 class JarvisAccessibilityService : AccessibilityService() {
     private val TAG = "JarvisAccessibility"
+    private var volumeUpDownTime = 0L
 
     companion object {
         var instance: JarvisAccessibilityService? = null
@@ -20,6 +22,47 @@ class JarvisAccessibilityService : AccessibilityService() {
         Log.d(TAG, "Jarvis Accessibility Service Connected")
         com.example.util.JarvisLogger.success("SYS_ACCESSIBILITY", "Jarvis Screen Control Core Engaged!")
     }
+
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                val now = System.currentTimeMillis()
+                if (now - volumeUpDownTime < 500) {
+                    // Double tap detected
+                    Log.d(TAG, "Global Hotkey triggered via Volume Up double tap - Launching App")
+                    val intent = Intent(this, com.example.MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    }
+                    startActivity(intent)
+                    volumeUpDownTime = 0
+                    return true
+                } else {
+                    volumeUpDownTime = now
+                }
+            }
+        } else if (event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                val now = System.currentTimeMillis()
+                if (now - volumeUpDownTime < 500) {
+                    Log.d(TAG, "Global Hotkey triggered via Volume Down double tap - Forcing Voice Recognition")
+                    val intent = Intent(this, JarvisVoiceService::class.java).apply {
+                        putExtra("FORCE_LISTEN", true)
+                    }
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                        startForegroundService(intent)
+                    } else {
+                        startService(intent)
+                    }
+                    volumeUpDownTime = 0
+                    return true
+                } else {
+                    volumeUpDownTime = now
+                }
+            }
+        }
+        return super.onKeyEvent(event)
+    }
+
 
     override fun onDestroy() {
         instance = null

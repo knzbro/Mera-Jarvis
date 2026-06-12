@@ -149,15 +149,15 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
         }
     }
 
-    private fun startSpeechRecognizer() {
+    private fun startSpeechRecognizer(force: Boolean = false) {
         mainHandler.post {
             try {
-                if (isSpokenResponseActive) {
+                if (isSpokenResponseActive && !force) {
                     Log.d(TAG, "SpeechRecognizer: Cancel starting because TTS output is active.")
                     return@post
                 }
 
-                if (!JarvisPreferences.isJarvisActive(this)) {
+                if (!JarvisPreferences.isJarvisActive(this) && !force) {
                     Log.d(TAG, "Jarvis is not active in preferences. Stopping SpeechRecognizer.")
                     return@post
                 }
@@ -1275,8 +1275,21 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val command = intent?.getStringExtra("COMMAND")
+        val forceListen = intent?.getBooleanExtra("FORCE_LISTEN", false) ?: false
         if (command != null) {
             handleCommand(command, isFromText = true)
+        } else if (forceListen) {
+            Log.d(TAG, "FORCE_LISTEN intent received. Cancelling any TTS and forcing voice recognition.")
+            tts?.stop()
+            isSpokenResponseActive = false // reset flag just in case
+            try {
+                val tg = android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION, 100)
+                tg.startTone(android.media.ToneGenerator.TONE_PROP_PROMPT)
+                tg.release()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            startSpeechRecognizer(force = true)
         } else {
             Toast.makeText(this, "Jarvis Voice Engine Engaged", Toast.LENGTH_SHORT).show()
         }
