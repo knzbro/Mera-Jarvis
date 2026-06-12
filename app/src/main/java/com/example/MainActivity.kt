@@ -143,9 +143,6 @@ class MainActivity : ComponentActivity() {
                                         onOpenNotificationSettings = { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
                                     )
                                 }
-                                composable("gestures") {
-                                    GestureJarvisScreen()
-                                }
                                 composable("text_jarvis") {
                                     TextJarvisScreen()
                                 }
@@ -1418,13 +1415,6 @@ fun BottomNavBar(navController: NavController) {
         ) {
             NavIcon(Icons.Default.Home, isActive = currentRoute == "dashboard", onClick = {
                 navController.navigate("dashboard") {
-                    popUpTo(navController.graph.startDestinationId) { saveState = true }
-                    launchSingleTop = true
-                    restoreState = true
-                }
-            })
-            NavIcon(Icons.Default.Create, isActive = currentRoute == "gestures", onClick = {
-                navController.navigate("gestures") {
                     popUpTo(navController.graph.startDestinationId) { saveState = true }
                     launchSingleTop = true
                     restoreState = true
