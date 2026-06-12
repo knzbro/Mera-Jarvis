@@ -1424,6 +1424,75 @@ fun GestureJarvisScreen() {
     var paths by remember { mutableStateOf(listOf<androidx.compose.ui.graphics.Path>()) }
     var currentPath by remember { mutableStateOf(androidx.compose.ui.graphics.Path()) }
     var actionText by remember { mutableStateOf("Draw shape for workflows...") }
+    var showOnboarding by remember { mutableStateOf(false) }
+
+    if (showOnboarding) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showOnboarding = false }) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(16.dp).border(2.dp, JarvisCyan, RoundedCornerShape(16.dp)),
+                shape = RoundedCornerShape(16.dp),
+                color = JarvisCardBg
+            ) {
+                Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("KASHIF BHAI, GESTURE DIRECTORY", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = JarvisCyan)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Guide Items
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(40.dp).background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                                Text("O", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text("Circle", fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("Toggle Flashlight / Lights", fontSize = 12.sp, color = JarvisTextMuted)
+                            }
+                        }
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(40.dp).background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                                Text("V", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text("V-Shape", fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("Start Voice Command", fontSize = 12.sp, color = JarvisTextMuted)
+                            }
+                        }
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(40.dp).background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                                Text("Z", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text("Z-Shape", fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("Emergency / Full Override", fontSize = 12.sp, color = JarvisTextMuted)
+                            }
+                        }
+                        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(40.dp).background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                                Text("^", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text("Triangle / Up", fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("Launch YouTube", fontSize = 12.sp, color = JarvisTextMuted)
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(
+                        onClick = { showOnboarding = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = JarvisCyan, contentColor = Color.Black),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("ACKNOWLEDGE", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -1431,7 +1500,17 @@ fun GestureJarvisScreen() {
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("GESTURE CORE", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = JarvisCyan)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("GESTURE CORE", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = JarvisCyan)
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(onClick = { showOnboarding = true }, modifier = Modifier.size(24.dp)) {
+                Icon(Icons.Default.Info, contentDescription = "Gesture Guide", tint = JarvisCyan)
+            }
+        }
         Spacer(modifier = Modifier.height(8.dp))
         Text(actionText, color = JarvisTextMuted, fontSize = 14.sp)
         Spacer(modifier = Modifier.height(16.dp))
