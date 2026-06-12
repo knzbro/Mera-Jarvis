@@ -144,7 +144,7 @@ class MainActivity : ComponentActivity() {
                                         )
                                         Spacer(modifier = Modifier.height(16.dp))
                                         Text(
-                                            "JARVIS API ERROR",
+                                            "Kashif Bhai, Error Detected",
                                             fontSize = 18.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color.Red,
@@ -153,7 +153,7 @@ class MainActivity : ComponentActivity() {
                                         )
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Text(
-                                            "SHIELD STATUS: Bypassed",
+                                            "JARVIS SYSTEMS BLOCKED",
                                             fontSize = 11.sp,
                                             color = JarvisTextMuted,
                                             fontFamily = FontFamily.Monospace
@@ -168,12 +168,19 @@ class MainActivity : ComponentActivity() {
                                         )
                                         Spacer(modifier = Modifier.height(24.dp))
                                         Button(
-                                            onClick = { apiErrorDetails = null },
+                                            onClick = { 
+                                                apiErrorDetails = null
+                                                navController.navigate("settings") {
+                                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
+                                                    launchSingleTop = true
+                                                    restoreState = true
+                                                }
+                                            },
                                             colors = ButtonDefaults.buttonColors(containerColor = Color.Red, contentColor = Color.White),
                                             shape = RoundedCornerShape(8.dp),
                                             modifier = Modifier.fillMaxWidth().height(48.dp)
                                         ) {
-                                            Text("DISMISS ALERT", fontWeight = FontWeight.Bold, color = Color.White)
+                                            Text("FIX IT", fontWeight = FontWeight.Bold, color = Color.White)
                                         }
                                     }
                                 }

@@ -101,20 +101,18 @@ class JarvisGlowView(context: Context) : View(context) {
         val x0 = -w + (offsetW * w * 2) % w
         val x1 = x0 + w
 
-        val horizontalGradient = LinearGradient(
-            x0, 0f, x1, 0f,
-            colors, null,
-            Shader.TileMode.REPEAT
+        val horizontalGradient = android.graphics.RadialGradient(
+            w / 2f, h, Math.max(w, h),
+            intArrayOf(Color.parseColor("#6600FFCC"), Color.parseColor("#0000FFCC"), Color.TRANSPARENT),
+            null,
+            Shader.TileMode.CLAMP
         )
 
         paint.reset()
         paint.isAntiAlias = true
         paint.shader = horizontalGradient
         paint.style = Paint.Style.FILL
-
-        // MULTI-PASS NEON BLOOM RENDERING (Very thin, super bright core with soft outer bloom)
         
-        // Pass A: Wide ambient aura bloom line (semi-invisible edge backlight)
         val pulsingAlpha = if (state == JarvisGlowOverlayService.GlowState.IDLE) {
             (25 + (15 * progress)).toInt()
         } else {
@@ -122,28 +120,6 @@ class JarvisGlowView(context: Context) : View(context) {
         }
         paint.alpha = pulsingAlpha.coerceIn(0, 255)
         canvas.drawRect(0f, 0f, w, h, paint)
-
-        // Pass B: Inner concentrated neon laser filament (50% thickness)
-        val filamentPaint = Paint().apply {
-            isAntiAlias = true
-            style = Paint.Style.FILL
-            shader = horizontalGradient
-            alpha = if (state == JarvisGlowOverlayService.GlowState.IDLE) 50 else 230
-        }
-        val filamentHeight = h * 0.5f
-        canvas.drawRect(0f, 0f, w, filamentHeight, filamentPaint)
-
-        // Pass C: White hot fluorescent incandescent core wire (Super thin 15% thickness)
-        if (state != JarvisGlowOverlayService.GlowState.IDLE) {
-            val corePaint = Paint().apply {
-                isAntiAlias = true
-                style = Paint.Style.FILL
-                color = Color.WHITE
-                alpha = 255
-            }
-            val coreHeight = h * 0.18f
-            canvas.drawRect(0f, 0f, w, coreHeight, corePaint)
-        }
     }
 
     override fun onDetachedFromWindow() {
@@ -182,7 +158,7 @@ class JarvisGlowOverlayService : Service() {
         glowView = JarvisGlowView(this)
 
         // Ultra-thin fine cyber bar (Made more bareek as requested: changed from 8 to 4)
-        val heightInDp = 4
+        val heightInDp = 120
         val density = resources.displayMetrics.density
         val heightInPx = (heightInDp * density).toInt()
 
