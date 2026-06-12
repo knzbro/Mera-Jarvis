@@ -110,6 +110,7 @@ object GeminiHelper {
                - "clear_logs" (wipe out jarvis diagnostic logs database)
                - "toggle_airplane_mode" (open setting flight mode panels)
                - "battery_status" (report current power percentage charge)
+               - "answer_call" (answer an incoming phone call)
                - "none" (simple general chit chat, status report, conversation questions, date, time answers with no system changes)
             3. "arg" (String): An optional argument for the action as defined in the list above.
 
@@ -408,6 +409,9 @@ object GeminiHelper {
                             }
                             "TOGGLE_AIRPLANE_MODE" -> {
                                 action = "toggle_airplane_mode"
+                            }
+                            "ANSWER_CALL" -> {
+                                action = "answer_call"
                             }
                             "WIFI_ON" -> {
                                 action = "wifi_on"

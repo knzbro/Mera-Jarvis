@@ -32,6 +32,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -55,6 +59,35 @@ val JarvisCyan = Color(0xFF00E5FF)
 val JarvisTextMuted = Color(0xFF94A3B8)
 val JarvisCardBg = Color(0x0CFFFFFF)
 val JarvisCardBorder = Color(0x1AFFFFFF)
+
+@Composable
+fun CyberGridBackground() {
+    val infiniteTransition = rememberInfiniteTransition(label = "grid_move")
+    val gridOffset by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 60f,
+        animationSpec = infiniteRepeatable(tween(2000, easing = LinearEasing), repeatMode = RepeatMode.Restart),
+        label = "grid_offset"
+    )
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val step = 60f
+        val cols = (size.width / step).toInt() + 2
+        val rows = (size.height / step).toInt() + 2
+        
+        val gridColor = JarvisCyan.copy(alpha = 0.05f)
+        val pathEffect = PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
+
+        for (i in 0..cols) {
+            val x = (i * step) - (gridOffset % step)
+            drawLine(gridColor, Offset(x, 0f), Offset(x, size.height), 2f, pathEffect = pathEffect)
+        }
+        for (j in 0..rows) {
+            val y = (j * step) - (gridOffset % step)
+            drawLine(gridColor, Offset(0f, y), Offset(size.width, y), 2f, pathEffect = pathEffect)
+        }
+    }
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -93,10 +126,12 @@ class MainActivity : ComponentActivity() {
                                 .padding(innerPadding)
                                 .background(JarvisBackground)
                         ) {
-                            NavHost(
-                                navController = navController,
-                                startDestination = "dashboard",
-                                modifier = Modifier.weight(1f),
+                            Box(modifier = Modifier.weight(1f)) {
+                                CyberGridBackground()
+                                NavHost(
+                                    navController = navController,
+                                    startDestination = "dashboard",
+                                    modifier = Modifier.fillMaxSize(),
                                 enterTransition = { androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(300)) + androidx.compose.animation.slideInHorizontally(initialOffsetX = { 1000 }, animationSpec = androidx.compose.animation.core.tween(300)) },
                                 exitTransition = { androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(300)) + androidx.compose.animation.slideOutHorizontally(targetOffsetX = { -1000 }, animationSpec = androidx.compose.animation.core.tween(300)) },
                                 popEnterTransition = { androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(300)) + androidx.compose.animation.slideInHorizontally(initialOffsetX = { -1000 }, animationSpec = androidx.compose.animation.core.tween(300)) },
@@ -117,6 +152,7 @@ class MainActivity : ComponentActivity() {
                                 composable("settings") {
                                     JarvisSettings()
                                 }
+                            }
                             }
                             BottomNavBar(navController = navController)
                         }
@@ -964,12 +1000,22 @@ fun JarvisHeader(isJarvisActive: Boolean) {
 @Composable
 fun CoreLoadIndicator(isJarvisActive: Boolean) {
     val activeColor = if (isJarvisActive) Color.Red else JarvisCyan
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.95f,
+        targetValue = 1.05f,
+        animationSpec = infiniteRepeatable(tween(1000, easing = LinearEasing), repeatMode = RepeatMode.Reverse),
+        label = "scale"
+    )
+    
+    val currentPercent by animateIntAsState(targetValue = if (isJarvisActive) 100 else 88, animationSpec = tween(500))
+
     Box(modifier = Modifier.fillMaxWidth().height(140.dp), contentAlignment = Alignment.Center) {
-        Box(modifier = Modifier.size(140.dp).background(Brush.radialGradient(listOf(activeColor.copy(alpha = 0.2f), Color.Transparent)), CircleShape))
-        Box(modifier = Modifier.size(110.dp).border(1.dp, activeColor.copy(alpha = 0.3f), CircleShape).background(activeColor.copy(alpha = 0.05f), CircleShape), contentAlignment = Alignment.Center) {
-            Box(modifier = Modifier.size(86.dp).border(2.dp, activeColor, CircleShape), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.size(140.dp).scale(if (isJarvisActive) pulseScale else 1f).background(Brush.radialGradient(listOf(activeColor.copy(alpha = 0.2f), Color.Transparent)), CircleShape))
+        Box(modifier = Modifier.size(110.dp).scale(if (isJarvisActive) 1f + (pulseScale - 1f) * 0.5f else 1f).border(1.dp, activeColor.copy(alpha = 0.3f), CircleShape).background(activeColor.copy(alpha = 0.05f), CircleShape), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.size(86.dp).scale(if (isJarvisActive) pulseScale else 1f).border(2.dp, activeColor, CircleShape), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(if (isJarvisActive) "100%" else "88%", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text("$currentPercent%", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     Text("CORE LOAD", fontSize = 8.sp, fontFamily = FontFamily.Monospace, color = activeColor.copy(alpha = 0.8f))
                 }
             }

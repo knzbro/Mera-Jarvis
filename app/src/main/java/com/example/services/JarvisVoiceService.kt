@@ -467,6 +467,7 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
             "clear_logs" -> clearJarvisLogs()
             "toggle_airplane_mode" -> openAirplaneModeSettings()
             "battery_status" -> speakBatteryStatus()
+            "answer_call" -> answerPhoneCall()
         }
     }
 
@@ -788,18 +789,15 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
 
     // --- HELPER IMPLEMENTATION OF NEW ADVANCED MACROS ---
     private fun openCustomFolder() {
-        val baseDir = getExternalFilesDir(null) ?: filesDir
-        val proLevelFolder = File(baseDir, "Pro Level")
-        if (!proLevelFolder.exists()) proLevelFolder.mkdirs()
         try {
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(Uri.fromFile(proLevelFolder), "*/*")
+            val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                type = "*/*"
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             startActivity(intent)
-            speakOut("Kashif Bhai, files system folder explorer view launch ho gaya hai.")
+            speakOut("Kashif Bhai, system folder explorer launch ho gaya hai.")
         } catch (e: Exception) {
-            speakOut("Kashif Bhai, " + proLevelFolder.name + " screen visual explore open kiya.")
+            speakOut("Kashif Bhai, folder view open karne mein error aya.")
         }
     }
 
@@ -985,6 +983,25 @@ class JarvisVoiceService : Service(), TextToSpeech.OnInitListener {
             speakOut("Kashif Bhai, phone battery power percentage $pct hai, aur device abhi $stateMsg.")
         } catch (e: Exception) {
             speakOut("Power diagnostics check metrics failure.")
+        }
+    }
+
+    private fun answerPhoneCall() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val telecomManager = getSystemService(Context.TELECOM_SERVICE) as android.telecom.TelecomManager
+                if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.ANSWER_PHONE_CALLS) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    telecomManager.acceptRingingCall()
+                    speakOut("Kashif Bhai, call ko successfully answer kar liya gaya hai.")
+                } else {
+                    speakOut("Kashif Bhai, call answer karne ke liye system permission allowed nahi hai.")
+                }
+            } else {
+                speakOut("Device version call intercept allow nahi karta.")
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            speakOut("Call intercept operation bypass failure.")
         }
     }
 
